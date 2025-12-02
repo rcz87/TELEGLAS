@@ -159,13 +159,17 @@ class RawDataService:
             return {}
     
     async def get_taker_volume(self, symbol: str) -> Dict[str, Any]:
-        """Get taker volume data using orderbook ask-bids history for better CVD proxy"""
+        """Get taker volume data using v2 taker buy-sell volume history for better multi-timeframe analysis"""
         try:
-            # Try the new orderbook ask-bids history endpoint for better taker flow data
-            result = await self.api.get_orderbook_ask_bids_history(symbol, "Binance", "1h", 100)
+            # Try the new v2 taker buy-sell volume history endpoint for better multi-timeframe data
+            result = await self.api.get_taker_buy_sell_volume_history(symbol, "Binance", "h1", 1000)
             
             if not result.get("success"):
-                # Fallback to the original endpoint if new one fails
+                # Fallback to the orderbook ask-bids history endpoint
+                result = await self.api.get_orderbook_ask_bids_history(symbol, "Binance", "1h", 100)
+            
+            if not result.get("success"):
+                # Final fallback to the original endpoint if both new ones fail
                 result = await self.api.get_taker_buy_sell_volume_exchange_list(symbol)
             
             return result

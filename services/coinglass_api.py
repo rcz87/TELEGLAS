@@ -532,11 +532,42 @@ class CoinGlassAPI:
                 params["exName"] = ex_name
             result = await self._make_request("/api/futures/taker-buy-sell-volume/exchange-list", params)
             if not result.get("success"):
-                logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/aggregation reason: {result.get('error')}")
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/taker-buy-sell-volume/exchange-list reason: {result.get('error')}")
                 return {"success": False, "data": []}
             return result
         except Exception as e:
-            logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/aggregation reason: {e}")
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/taker-buy-sell-volume/exchange-list reason: {e}")
+            return {"success": False, "data": []}
+
+    async def get_taker_buy_sell_volume_history(
+        self,
+        symbol: str,
+        exchange: str = "Binance",
+        interval: str = "h1",
+        limit: int = 1000,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Get taker buy/sell volume history for better multi-timeframe analysis"""
+        try:
+            # Use the v2 endpoint as provided by user
+            params = {
+                "symbol": f"{symbol}USDT",  # Format symbol with USDT suffix
+                "exchange": exchange,
+                "interval": interval,
+                "limit": limit
+            }
+            if start_time:
+                params["start_time"] = start_time
+            if end_time:
+                params["end_time"] = end_time
+            result = await self._make_request("/api/futures/v2/taker-buy-sell-volume/history", params)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/v2/taker-buy-sell-volume/history reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/v2/taker-buy-sell-volume/history reason: {e}")
             return {"success": False, "data": []}
 
     # Additional Utility Endpoints
