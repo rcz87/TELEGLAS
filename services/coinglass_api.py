@@ -3,6 +3,7 @@ import asyncio
 import time
 from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass
+from datetime import datetime
 from loguru import logger
 from config.settings import settings
 
@@ -592,6 +593,269 @@ class CoinGlassAPI:
                 "reset_time": self._rate_limit_info.reset_time,
             }
         return {"used": 0, "limit": 0, "remaining": 0, "reset_time": 0}
+
+    # Raw Data Aggregator - Tier-Safe Implementation
+
+    def normalize_symbol(self, symbol: str) -> str:
+        """Normalize symbol to standard format for CoinGlass API"""
+        if not symbol:
+            return ""
+        
+        symbol = str(symbol).upper().strip()
+        
+        # Remove common suffixes
+        symbol = symbol.replace("USDT", "").replace("USD", "").replace("PERP", "")
+        
+        # Handle common variations
+        symbol_mapping = {
+            "BITCOIN": "BTC",
+            "ETHEREUM": "ETH", 
+            "SOLANA": "SOL",
+            "CARDANO": "ADA",
+            "POLKADOT": "DOT",
+            "AVALANCHE": "AVAX",
+            "CHAINLINK": "LINK",
+            "UNISWAP": "UNI",
+            "LITECOIN": "LTC",
+            "RIPPLE": "XRP",
+        }
+        
+        return symbol_mapping.get(symbol, symbol)
+
+    async def get_raw_market_snapshot(self, symbol: str) -> Dict[str, Any]:
+        """
+        Get comprehensive raw market data using only Standard tier endpoints
+        This function is tier-safe and will not crash if endpoints fail
+        """
+        try:
+            normalized_symbol = self.normalize_symbol(symbol)
+            logger.info(f"[RAW_DATA] Fetching market snapshot for {symbol} -> {normalized_symbol}")
+            
+            async with self:
+                # Fetch data from confirmed working endpoints concurrently
+                tasks = [
+                    self._get_market_price_data(normalized_symbol),
+                    self._get_liquidation_summary(normalized_symbol),
+                    self._get_funding_rate_summary(normalized_symbol),
+                    self._get_open_interest_summary(normalized_symbol),
+                    self._get_long_short_ratio_summary(normalized_symbol),
+                ]
+                
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Process results safely
+                price_data = results[0] if not isinstance(results[0], Exception) else {}
+                liquidation_data = results[1] if not isinstance(results[1], Exception) else {}
+                funding_data = results[2] if not isinstance(results[2], Exception) else {}
+                oi_data = results[3] if not isinstance(results[3], Exception) else {}
+                ls_ratio_data = results[4] if not isinstance(results[4], Exception) else {}
+                
+                # Combine all data into structured response
+                snapshot = {
+                    "symbol": normalized_symbol,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "price": price_data,
+                    "liquidations": liquidation_data,
+                    "funding": funding_data,
+                    "open_interest": oi_data,
+                    "long_short_ratio": ls_ratio_data,
+                }
+                
+                logger.info(f"[RAW_DATA] Successfully fetched snapshot for {normalized_symbol}")
+                return snapshot
+                
+        except Exception as e:
+            logger.error(f"[RAW_DATA] Error fetching market snapshot for {symbol}: {e}")
+            return {
+                "symbol": self.normalize_symbol(symbol),
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+
+    async def _get_market_price_data(self, symbol: str) -> Dict[str, Any]:
+        """Get market price data from futures coins markets endpoint"""
+        try:
+            result = await self.get_futures_coins_markets(symbol)
+            
+            if not result.get("success"):
+                logger.warning(f"[RAW_DATA] Failed to get price data for {symbol}: {result.get('error')}")
+                return {}
+            
+            data = result.get("data", [])
+            if not isinstance(data, list) or not data:
+                return {}
+            
+            # Get first matching symbol
+            for item in data:
+                if isinstance(item, dict) and str(item.get("symbol", "")).upper() == symbol:
+                    return {
+                        "last_price": safe_float(item.get("lastPrice")),
+                        "mark_price": safe_float(item.get("markPrice")),
+                        "price_change_1h": safe_float(item.get("priceChange1h")),
+                        "price_change_4h": safe_float(item.get("priceChange4h")),
+                        "price_change_24h": safe_float(item.get("priceChange24h")),
+                        "high_24h": safe_float(item.get("highPrice24h")),
+                        "low_24h": safe_float(item.get("lowPrice24h")),
+                        "high_7d": safe_float(item.get("highPrice7d")),
+                        "low_7d": safe_float(item.get("lowPrice7d")),
+                        "volume_24h": safe_float(item.get("volume24h")),
+                        "market_cap": safe_float(item.get("marketCap")),
+                    }
+            
+            return {}
+            
+        except Exception as e:
+            logger.error(f"[RAW_DATA] Error getting price data for {symbol}: {e}")
+            return {}
+
+    async def _get_liquidation_summary(self, symbol: str) -> Dict[str, Any]:
+        """Get liquidation data summary"""
+        try:
+            result = await self.get_liquidation_exchange_list(symbol)
+            
+            if not result.get("success"):
+                logger.warning(f"[RAW_DATA] Failed to get liquidation data for {symbol}: {result.get('error')}")
+                return {}
+            
+            data = result.get("data", [])
+            if not isinstance(data, list) or not data:
+                return {}
+            
+            # Aggregate across all exchanges
+            total_liquidation = 0.0
+            total_long_liq = 0.0
+            total_short_liq = 0.0
+            exchange_count = 0
+            
+            for item in data:
+                if isinstance(item, dict):
+                    total_liquidation += safe_float(item.get("liquidation_usd_24h"))
+                    total_long_liq += safe_float(item.get("long_liquidation_usd_24h"))
+                    total_short_liq += safe_float(item.get("short_liquidation_usd_24h"))
+                    exchange_count += 1
+            
+            return {
+                "total_24h": total_liquidation,
+                "long_24h": total_long_liq,
+                "short_24h": total_short_liq,
+                "exchange_count": exchange_count,
+            }
+            
+        except Exception as e:
+            logger.error(f"[RAW_DATA] Error getting liquidation data for {symbol}: {e}")
+            return {}
+
+    async def _get_funding_rate_summary(self, symbol: str) -> Dict[str, Any]:
+        """Get funding rate summary"""
+        try:
+            result = await self.get_funding_rate_exchange_list(symbol)
+            
+            if not result.get("success"):
+                logger.warning(f"[RAW_DATA] Failed to get funding data for {symbol}: {result.get('error')}")
+                return {}
+            
+            data = result.get("data", [])
+            if not isinstance(data, list) or not data:
+                return {}
+            
+            # Get current funding rates from all exchanges
+            funding_rates = []
+            total_rate = 0.0
+            exchange_count = 0
+            
+            for item in data:
+                if isinstance(item, dict):
+                    rate = safe_float(item.get("fundingRate"))
+                    if abs(rate) < 0.1:  # Filter unrealistic rates
+                        funding_rates.append({
+                            "exchange": str(item.get("exchange", "")).lower(),
+                            "rate": rate,
+                            "rate_percentage": rate * 100,
+                        })
+                        total_rate += rate
+                        exchange_count += 1
+            
+            average_rate = total_rate / max(1, exchange_count)
+            
+            return {
+                "current_average": average_rate,
+                "current_percentage": average_rate * 100,
+                "exchange_count": exchange_count,
+                "by_exchange": funding_rates,
+            }
+            
+        except Exception as e:
+            logger.error(f"[RAW_DATA] Error getting funding data for {symbol}: {e}")
+            return {}
+
+    async def _get_open_interest_summary(self, symbol: str) -> Dict[str, Any]:
+        """Get open interest summary"""
+        try:
+            result = await self.get_open_interest_exchange_list(symbol)
+            
+            if not result.get("success"):
+                logger.warning(f"[RAW_DATA] Failed to get OI data for {symbol}: {result.get('error')}")
+                return {}
+            
+            data = result.get("data", [])
+            if not isinstance(data, list) or not data:
+                return {}
+            
+            # Aggregate across all exchanges
+            total_oi = 0.0
+            oi_by_exchange = {}
+            exchange_count = 0
+            
+            for item in data:
+                if isinstance(item, dict):
+                    exchange = str(item.get("exchange", "")).lower()
+                    oi_value = safe_float(item.get("openInterest"))
+                    
+                    if oi_value > 0:
+                        total_oi += oi_value
+                        oi_by_exchange[exchange] = oi_value
+                        exchange_count += 1
+            
+            return {
+                "total": total_oi,
+                "exchange_count": exchange_count,
+                "by_exchange": oi_by_exchange,
+            }
+            
+        except Exception as e:
+            logger.error(f"[RAW_DATA] Error getting OI data for {symbol}: {e}")
+            return {}
+
+    async def _get_long_short_ratio_summary(self, symbol: str) -> Dict[str, Any]:
+        """Get long/short ratio summary from Binance"""
+        try:
+            result = await self.get_global_long_short_ratio(symbol, "Binance")
+            
+            if not result.get("success"):
+                logger.warning(f"[RAW_DATA] Failed to get L/S ratio for {symbol}: {result.get('error')}")
+                return {}
+            
+            data = result.get("data", [])
+            if not isinstance(data, list) or not data:
+                return {}
+            
+            # Get most recent data
+            latest = data[-1] if data else None
+            if not isinstance(latest, dict):
+                return {}
+            
+            account_ratio = safe_float(latest.get("longShortRatio"))
+            position_ratio = safe_float(latest.get("positionLongShortRatio"))
+            
+            return {
+                "account_ratio": account_ratio,
+                "position_ratio": position_ratio,
+                "exchange": "binance",
+            }
+            
+        except Exception as e:
+            logger.error(f"[RAW_DATA] Error getting L/S ratio for {symbol}: {e}")
+            return {}
 
 
 # Global instance

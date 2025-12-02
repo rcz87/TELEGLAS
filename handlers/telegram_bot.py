@@ -16,7 +16,7 @@ from core.database import db_manager, UserSubscription
 from services.liquidation_monitor import liquidation_monitor
 from services.whale_watcher import whale_watcher
 from services.funding_rate_radar import funding_rate_radar
-from services.raw_data_service import raw_data_service
+from services.coinglass_api import coinglass_api
 
 
 class TelegramBot:
@@ -498,29 +498,24 @@ class TelegramBot:
 
     async def handle_raw_data(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /raw command - comprehensive market data"""
-        if not self._is_whitelisted(update.effective_user.id):
-            return
-
+        user_id = update.effective_user.id
+        username = update.effective_user.username or update.effective_user.first_name
+        
         # Extract symbol from command
         symbol = None
         if context.args:
             symbol = context.args[0].upper()
 
+        # Log incoming update
+        logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /raw command for {symbol or 'no symbol'}")
+
+        if not self._is_whitelisted(user_id):
+            logger.warning(f"[TELEGRAM] User {user_id} (@{username}) denied access to /raw - not whitelisted")
+            return
+
         if not symbol:
             await update.message.reply_text(
-                "❌ *Symbol Required*\n\n"
-                "Usage: /raw `[SYMBOL]`\n"
-                "Example: /raw BTC\n\n"
-                "This command provides comprehensive market data including:\n"
-                "• Price information (1H, 4H, 24H, 7D changes)\n"
-                "• Open Interest analysis\n"
-                "• Volume data\n"
-                "• Funding rates\n"
-                "• Liquidations\n"
-                "• Long/Short ratios\n"
-                "• Taker flow (CVD proxy)\n"
-                "• RSI multi-timeframe\n"
-                "• CoinGlass levels (support/resistance)",
+                "❌ *Symbol Required. Usage: /raw [SYMBOL]*",
                 parse_mode="Markdown",
             )
             return
@@ -529,21 +524,19 @@ class TelegramBot:
         await update.message.chat.send_action(action="typing")
 
         try:
-            # Get comprehensive market data
-            market_data = await raw_data_service.get_comprehensive_market_data(symbol)
+            # Get comprehensive market data using tier-safe endpoints
+            market_data = await coinglass_api.get_raw_market_snapshot(symbol)
 
             if "error" in market_data:
+                logger.error(f"[RAW_DATA] Error fetching data for {symbol}: {market_data['error']}")
                 await update.message.reply_text(
-                    f"❌ *Data Fetch Error*\n\n"
-                    f"Could not retrieve market data for `{symbol}`\n"
-                    f"Error: {market_data['error']}\n\n"
-                    f"Please try again in a few moments.",
+                    "❌ *Service Error. An error occurred while fetching market data. Please try again later.*",
                     parse_mode="Markdown",
                 )
                 return
 
             # Format for Telegram display
-            formatted_message = raw_data_service.format_for_telegram(market_data)
+            formatted_message = self._format_raw_market_data(market_data)
 
             # Send the comprehensive data
             await update.message.reply_text(
@@ -552,14 +545,121 @@ class TelegramBot:
                 disable_web_page_preview=True
             )
 
+            logger.info(f"[TELEGRAM] Successfully sent /raw response for {symbol} to user {user_id}")
+
         except Exception as e:
-            logger.error(f"Error in /raw command for {symbol}: {e}")
+            logger.error(f"[RAW_DATA] Error in /raw command for {symbol}: {e}")
             await update.message.reply_text(
-                "❌ *Service Error*\n\n"
-                "An error occurred while fetching market data.\n"
-                "Please try again later.",
+                "❌ *Service Error. An error occurred while fetching market data. Please try again later.*",
                 parse_mode="Markdown",
             )
+
+    def _format_raw_market_data(self, data: Dict[str, Any]) -> str:
+        """Format raw market data for Telegram display"""
+        try:
+            symbol = data.get("symbol", "UNKNOWN")
+            timestamp = data.get("timestamp", "")
+            
+            # Price section
+            price_data = data.get("price", {})
+            price_section = ""
+            if price_data:
+                last_price = price_data.get("last_price", 0)
+                price_change_1h = price_data.get("price_change_1h", 0)
+                price_change_24h = price_data.get("price_change_24h", 0)
+                volume_24h = price_data.get("volume_24h", 0)
+                
+                price_emoji = "🟢" if price_change_24h >= 0 else "🔴"
+                price_section = (
+                    f"{price_emoji} *{symbol} Market Data*\n\n"
+                    f"💲 *Price & Changes:*\n"
+                    f"   Current: ${last_price:,.4f}\n"
+                    f"   1h: {price_change_1h:+.2f}%\n"
+                    f"   24h: {price_change_24h:+.2f}%\n"
+                    f"   Volume 24h: ${volume_24h:,.0f}\n\n"
+                )
+            
+            # Open Interest section
+            oi_data = data.get("open_interest", {})
+            oi_section = ""
+            if oi_data and oi_data.get("total", 0) > 0:
+                total_oi = oi_data.get("total", 0)
+                exchange_count = oi_data.get("exchange_count", 0)
+                oi_section = (
+                    f"📊 *Open Interest:*\n"
+                    f"   Total: ${total_oi:,.0f}\n"
+                    f"   Exchanges: {exchange_count}\n\n"
+                )
+            
+            # Funding Rate section
+            funding_data = data.get("funding", {})
+            funding_section = ""
+            if funding_data and funding_data.get("exchange_count", 0) > 0:
+                avg_rate = funding_data.get("current_average", 0)
+                avg_percentage = funding_data.get("current_percentage", 0)
+                exchange_count = funding_data.get("exchange_count", 0)
+                
+                funding_emoji = "🟢" if avg_rate >= 0 else "🔴"
+                funding_section = (
+                    f"{funding_emoji} *Funding Rate:*\n"
+                    f"   Average: {avg_percentage:+.4f}%\n"
+                    f"   Exchanges: {exchange_count}\n\n"
+                )
+            
+            # Liquidations section
+            liq_data = data.get("liquidations", {})
+            liq_section = ""
+            if liq_data and liq_data.get("total_24h", 0) > 0:
+                total_liq = liq_data.get("total_24h", 0)
+                long_liq = liq_data.get("long_24h", 0)
+                short_liq = liq_data.get("short_24h", 0)
+                exchange_count = liq_data.get("exchange_count", 0)
+                
+                liq_section = (
+                    f"📉 *Liquidations (24h):*\n"
+                    f"   Total: ${total_liq:,.0f}\n"
+                    f"   Longs: ${long_liq:,.0f}\n"
+                    f"   Shorts: ${short_liq:,.0f}\n"
+                    f"   Exchanges: {exchange_count}\n\n"
+                )
+            
+            # Long/Short Ratio section
+            ls_data = data.get("long_short_ratio", {})
+            ls_section = ""
+            if ls_data and ls_data.get("account_ratio", 0) > 0:
+                account_ratio = ls_data.get("account_ratio", 0)
+                position_ratio = ls_data.get("position_ratio", 0)
+                exchange = ls_data.get("exchange", "unknown")
+                
+                # Interpret the ratio
+                if account_ratio > 0.6:
+                    ls_emoji = "🟢"  # More longs
+                    bias = "Long Bias"
+                elif account_ratio < 0.4:
+                    ls_emoji = "🔴"  # More shorts
+                    bias = "Short Bias"
+                else:
+                    ls_emoji = "⚪"  # Balanced
+                    bias = "Balanced"
+                
+                ls_section = (
+                    f"{ls_emoji} *Long/Short Ratio ({exchange}):*\n"
+                    f"   Account Ratio: {account_ratio:.3f} ({bias})\n"
+                    f"   Position Ratio: {position_ratio:.3f}\n\n"
+                )
+            
+            # Combine all sections
+            message = price_section + oi_section + funding_section + liq_section + ls_section
+            
+            # Add footer
+            message += f"🕐 Data: {timestamp}\n"
+            message += "⚡ Powered by CoinGlass API v4 (Standard Tier)"
+            
+            return message
+            
+        except Exception as e:
+            logger.error(f"[RAW_DATA] Error formatting market data: {e}")
+            return f"❌ Error formatting market data for {data.get('symbol', 'UNKNOWN')}"
 
     async def handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle callback queries from inline keyboards"""
