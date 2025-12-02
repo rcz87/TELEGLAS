@@ -579,6 +579,39 @@ class CoinGlassAPI:
             logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/aggregation reason: {e}")
             return {"success": False, "data": []}
 
+    async def get_orderbook_ask_bids_history(
+        self,
+        symbol: str,
+        exchange: str = "Binance",
+        interval: str = "1h",
+        limit: int = 1000,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None,
+        range_param: str = "1"
+    ) -> Dict[str, Any]:
+        """Get orderbook ask-bids history for better taker flow analysis"""
+        try:
+            # Use correct parameter names from API documentation
+            params = {
+                "symbol": f"{symbol}USDT",  # Format symbol with USDT suffix
+                "exchange": exchange,
+                "interval": interval,
+                "limit": limit,
+                "range": range_param
+            }
+            if start_time:
+                params["start_time"] = start_time
+            if end_time:
+                params["end_time"] = end_time
+            result = await self._make_request("/api/futures/orderbook/ask-bids-history", params)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/ask-bids-history reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/ask-bids-history reason: {e}")
+            return {"success": False, "data": []}
+
     # Bitcoin Indicators - Only allowed endpoints from truth table
 
     async def get_rsi_list(self) -> Dict[str, Any]:

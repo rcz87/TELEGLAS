@@ -159,9 +159,15 @@ class RawDataService:
             return {}
     
     async def get_taker_volume(self, symbol: str) -> Dict[str, Any]:
-        """Get taker volume data"""
+        """Get taker volume data using orderbook ask-bids history for better CVD proxy"""
         try:
-            result = await self.api.get_taker_buy_sell_volume_exchange_list(symbol)
+            # Try the new orderbook ask-bids history endpoint for better taker flow data
+            result = await self.api.get_orderbook_ask_bids_history(symbol, "Binance", "1h", 100)
+            
+            if not result.get("success"):
+                # Fallback to the original endpoint if new one fails
+                result = await self.api.get_taker_buy_sell_volume_exchange_list(symbol)
+            
             return result
         except Exception as e:
             logger.error(f"[RAW] Error in get_taker_volume for {symbol}: {e}")
@@ -402,14 +408,57 @@ class RawDataService:
         }
     
     def _extract_taker_flow_data(self, taker_data: Dict) -> Dict[str, Any]:
-        """Extract taker flow data for multiple timeframes"""
+        """Extract taker flow data for multiple timeframes from orderbook ask-bids history"""
         # Default empty data
-        return {
-            "5m": {"buy": 0.0, "sell": 0.0, "net": 0.0},
-            "15m": {"buy": 0.0, "sell": 0.0, "net": 0.0},
-            "1h": {"buy": 0.0, "sell": 0.0, "net": 0.0},
-            "4h": {"buy": 0.0, "sell": 0.0, "net": 0.0}
+        default_tf = {"buy": 0.0, "sell": 0.0, "net": 0.0}
+        result = {
+            "5m": default_tf.copy(),
+            "15m": default_tf.copy(),
+            "1h": default_tf.copy(),
+            "4h": default_tf.copy()
         }
+        
+        if not taker_data or not taker_data.get("success"):
+            return result
+        
+        data = safe_get(taker_data, "data", [])
+        if not data or not isinstance(data, list):
+            return result
+        
+        try:
+            # The orderbook data gives us bids and asks volume in USD
+            # We can use this as a proxy for taker flow
+            # More buying pressure = higher bids volume
+            # More selling pressure = higher asks volume
+            
+            # Process the most recent data for different timeframes
+            # For now, we'll use the latest available data for all timeframes
+            if data:
+                latest = data[-1]  # Most recent data
+                if isinstance(latest, dict):
+                    bids_usd = safe_float(safe_get(latest, "bids_usd")) / 1e6  # Convert to millions
+                    asks_usd = safe_float(safe_get(latest, "asks_usd")) / 1e6  # Convert to millions
+                    net_flow = bids_usd - asks_usd
+                    
+                    # Use the same data for all timeframes as a proxy
+                    # In a real implementation, you'd aggregate by different time windows
+                    flow_data = {
+                        "buy": bids_usd,
+                        "sell": asks_usd,
+                        "net": net_flow
+                    }
+                    
+                    result["5m"] = flow_data.copy()
+                    result["15m"] = flow_data.copy()
+                    result["1h"] = flow_data.copy()
+                    result["4h"] = flow_data.copy()
+                    
+                    logger.info(f"[RAW] Extracted taker flow: Buy {bids_usd:.2f}M, Sell {asks_usd:.2f}M, Net {net_flow:+.2f}M")
+        
+        except Exception as e:
+            logger.error(f"[RAW] Error extracting taker flow data: {e}")
+        
+        return result
     
     def _extract_rsi_data(self, rsi_data: Dict) -> Dict[str, Any]:
         """Extract RSI data for multiple timeframes"""
