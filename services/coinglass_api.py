@@ -242,13 +242,27 @@ class CoinGlassAPI:
         params = {}
         if symbol:
             params["symbol"] = symbol
-        # Try correct v4 endpoint first
-        result = await self._make_request("/api/v4/funding_rate/exchange_list", params)
-        # Fallback to alternative endpoint if primary fails
-        if not result.get("success"):
-            logger.warning("Primary funding rate endpoint failed, trying alternative")
-            result = await self._make_request("/api/v4/funding_rate/accumulated_exchange_list", params)
-        return result
+        
+        # Try multiple endpoint variations in order of likelihood
+        endpoints_to_try = [
+            "/api/futures/funding-rate/exchange-list",
+            "/api/futures/fundingRate/exchange-list", 
+            "/api/v4/funding-rate/exchange-list",
+            "/api/v4/fundingRate/exchange-list",
+            "/api/futures/funding_rate/exchange-list",
+            "/api/futures/fundingRate/accumulated-exchange-list"
+        ]
+        
+        for i, endpoint in enumerate(endpoints_to_try):
+            result = await self._make_request(endpoint, params)
+            if result.get("success"):
+                logger.debug(f"Successfully used funding rate endpoint: {endpoint}")
+                return result
+            else:
+                logger.debug(f"Funding rate endpoint {i+1}/{len(endpoints_to_try)} failed: {endpoint}")
+        
+        logger.error("All funding rate endpoints failed")
+        return {"success": False, "data": [], "error": "All funding rate endpoints failed"}
 
     async def get_liquidation_orders(
         self, symbol: Optional[str] = None, ex_name: Optional[str] = None
@@ -425,7 +439,27 @@ class CoinGlassAPI:
         params = {}
         if symbol:
             params["symbol"] = symbol
-        return await self._make_request("/api/v4/funding_rate/accumulated_exchange_list", params)
+        
+        # Try multiple endpoint variations in order of likelihood
+        endpoints_to_try = [
+            "/api/futures/fundingRate/accumulated-exchange-list",
+            "/api/futures/funding-rate/accumulated-exchange-list",
+            "/api/v4/fundingRate/accumulated-exchange-list",
+            "/api/v4/funding-rate/accumulated-exchange-list",
+            "/api/futures/fundingRate/accumulated_exchange_list",
+            "/api/futures/funding-rate/accumulated_exchange_list"
+        ]
+        
+        for i, endpoint in enumerate(endpoints_to_try):
+            result = await self._make_request(endpoint, params)
+            if result.get("success"):
+                logger.debug(f"Successfully used accumulated funding rate endpoint: {endpoint}")
+                return result
+            else:
+                logger.debug(f"Accumulated funding rate endpoint {i+1}/{len(endpoints_to_try)} failed: {endpoint}")
+        
+        logger.error("All accumulated funding rate endpoints failed")
+        return {"success": False, "data": [], "error": "All accumulated funding rate endpoints failed"}
 
     async def get_funding_rate_arbitrage(self) -> Dict[str, Any]:
         """Get funding arbitrage opportunities"""
