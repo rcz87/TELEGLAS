@@ -447,24 +447,30 @@ class CoinGlassAPI:
     async def get_funding_rate_ohlc_history(
         self,
         symbol: str,
-        interval: str = "1h",
+        interval: str = "1d",
         start_time: Optional[int] = None,
         end_time: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Get funding rate OHLC history"""
         try:
-            params = {"symbol": symbol, "interval": interval, "exchange": "Binance"}
+            # Use correct parameter names from API documentation
+            params = {
+                "symbol": f"{symbol}USDT",  # Format symbol with USDT suffix
+                "interval": interval,
+                "exchange": "Binance",
+                "limit": 1000
+            }
             if start_time:
-                params["startTime"] = start_time
+                params["start_time"] = start_time
             if end_time:
-                params["endTime"] = end_time
+                params["end_time"] = end_time
             result = await self._make_request("/api/futures/funding-rate/history", params)
             if not result.get("success"):
-                logger.error(f"[COINGLASS] Failed endpoint /api/futures/fundingRate/history reason: {result.get('error')}")
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/funding-rate/history reason: {result.get('error')}")
                 return {"success": False, "data": []}
             return result
         except Exception as e:
-            logger.error(f"[COINGLASS] Failed endpoint /api/futures/fundingRate/history reason: {e}")
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/funding-rate/history reason: {e}")
             return {"success": False, "data": []}
 
     async def get_funding_rate_forecast(self, symbol: Optional[str] = None) -> Dict[str, Any]:
