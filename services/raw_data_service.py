@@ -228,6 +228,48 @@ class RawDataService:
         except Exception as e:
             logger.error(f"[RAW] Error in get_support_resistance for {symbol}: {e}")
             return {}
+
+    async def get_ema_multi_tf(self, symbol: str) -> Dict[str, Any]:
+        """Get EMA data for multiple timeframes using the new EMA indicators endpoint"""
+        try:
+            # Fetch EMA data for all required timeframes concurrently
+            tasks = [
+                self.api.get_ema_indicators(symbol, "Binance", "5m", 100, window=20),
+                self.api.get_ema_indicators(symbol, "Binance", "15m", 100, window=20),
+                self.api.get_ema_indicators(symbol, "Binance", "1h", 100, window=20),
+                self.api.get_ema_indicators(symbol, "Binance", "4h", 100, window=20)
+            ]
+            
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Process results for each timeframe
+            ema_data = {}
+            timeframes = ["5m", "15m", "1h", "4h"]
+            
+            for i, tf in enumerate(timeframes):
+                result = results[i] if not isinstance(results[i], Exception) else {}
+                if result and result.get("success"):
+                    data = safe_get(result, "data", [])
+                    if data and isinstance(data, list) and len(data) > 0:
+                        # Get the most recent EMA value
+                        latest = data[-1]
+                        if isinstance(latest, dict):
+                            ema_value = safe_float(safe_get(latest, "ema"))
+                            ema_data[tf] = ema_value
+                            logger.info(f"[RAW] EMA {tf} for {symbol}: {ema_value:.2f}")
+                        else:
+                            ema_data[tf] = 0.0
+                    else:
+                        ema_data[tf] = 0.0
+                else:
+                    ema_data[tf] = 0.0
+            
+            return ema_data
+            
+        except Exception as e:
+            logger.error(f"[RAW] Error in get_ema_multi_tf for {symbol}: {e}")
+            # Return empty data on error
+            return {"5m": 0.0, "15m": 0.0, "1h": 0.0, "4h": 0.0}
     
     # DATA EXTRACTION METHODS
     

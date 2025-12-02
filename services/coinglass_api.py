@@ -692,6 +692,41 @@ class CoinGlassAPI:
             logger.error(f"[COINGLASS] Failed endpoint /api/futures/indicators/rsi reason: {e}")
             return {"success": False, "data": []}
 
+    async def get_ema_indicators(
+        self,
+        symbol: str,
+        exchange: str = "Binance",
+        interval: str = "1h",
+        limit: int = 1000,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None,
+        window: int = 20,
+        series_type: str = "close"
+    ) -> Dict[str, Any]:
+        """Get EMA (Exponential Moving Average) indicators for technical analysis"""
+        try:
+            # Use the indicators EMA endpoint as provided by user
+            params = {
+                "symbol": f"{symbol}USDT",  # Format symbol with USDT suffix
+                "exchange": exchange,
+                "interval": interval,
+                "limit": limit,
+                "window": window,
+                "series_type": series_type
+            }
+            if start_time:
+                params["start_time"] = start_time
+            if end_time:
+                params["end_time"] = end_time
+            result = await self._make_request("/api/futures/indicators/ema", params)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/indicators/ema reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/indicators/ema reason: {e}")
+            return {"success": False, "data": []}
+
     async def get_basis_history(self) -> Dict[str, Any]:
         """Get basis history"""
         try:
