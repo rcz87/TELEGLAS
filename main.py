@@ -10,6 +10,7 @@ from handlers.telegram_bot import telegram_bot
 from services.liquidation_monitor import liquidation_monitor
 from services.whale_watcher import whale_watcher
 from services.funding_rate_radar import funding_rate_radar
+from utils.process_lock import ProcessLock, check_existing_instances
 
 
 class CryptoSatBot:
@@ -245,52 +246,59 @@ class CryptoSatBot:
 
 async def main():
     """Main entry point"""
-    # Debug the LOG_LEVEL value
-    print(f"DEBUG: LOG_LEVEL value = '{settings.LOG_LEVEL}'")
-    print(f"DEBUG: LOG_LEVEL type = {type(settings.LOG_LEVEL)}")
-    print(f"DEBUG: LOG_LEVEL.lower() = '{settings.LOG_LEVEL.lower()}'")
+    # Check for existing instances before starting
+    if check_existing_instances():
+        logger.error("[EXIT] Another bot instance is already running. Exiting.")
+        sys.exit(1)
     
-    # Configure logging
-    logger.remove()  # Remove default handler
-    logger.add(
-        sys.stdout,
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-        level="INFO",  # Hardcode for now to fix the issue
-    )
-
-    # Add file logging if specified
-    if settings.LOG_FILE:
-        # Ensure logs directory exists
-        import os
-        log_dir = os.path.dirname(settings.LOG_FILE)
-        if log_dir and not os.path.exists(log_dir):
-            os.makedirs(log_dir, exist_ok=True)
-            logger.info(f"Created logs directory: {log_dir}")
+    # Use process lock to ensure only one instance runs
+    with ProcessLock():
+        # Debug the LOG_LEVEL value
+        print(f"DEBUG: LOG_LEVEL value = '{settings.LOG_LEVEL}'")
+        print(f"DEBUG: LOG_LEVEL type = {type(settings.LOG_LEVEL)}")
+        print(f"DEBUG: LOG_LEVEL.lower() = '{settings.LOG_LEVEL.lower()}'")
         
+        # Configure logging
+        logger.remove()  # Remove default handler
         logger.add(
-            settings.LOG_FILE,
-            rotation="10 MB",
-            retention="7 days",
-            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-            level="INFO",
+            sys.stdout,
+            format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+            level="INFO",  # Hardcode for now to fix the issue
         )
 
-    logger.info(
-        "[STARTUP] CryptoSat Bot - High-Frequency Trading Signals & Market Intelligence"
-    )
-    logger.info("[STARTUP] Powered by CoinGlass API v4")
+        # Add file logging if specified
+        if settings.LOG_FILE:
+            # Ensure logs directory exists
+            import os
+            log_dir = os.path.dirname(settings.LOG_FILE)
+            if log_dir and not os.path.exists(log_dir):
+                os.makedirs(log_dir, exist_ok=True)
+                logger.info(f"Created logs directory: {log_dir}")
+            
+            logger.add(
+                settings.LOG_FILE,
+                rotation="10 MB",
+                retention="7 days",
+                format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+                level="INFO",
+            )
 
-    # Create and start the bot
-    bot = CryptoSatBot()
+        logger.info(
+            "[STARTUP] CryptoSat Bot - High-Frequency Trading Signals & Market Intelligence"
+        )
+        logger.info("[STARTUP] Powered by CoinGlass API v4")
 
-    try:
-        await bot.start()
-    except KeyboardInterrupt:
-        logger.info("[INTERRUPT] Received keyboard interrupt")
-    except Exception as e:
-        logger.error(f"[FATAL] Fatal error: {e}")
-    finally:
-        await bot.shutdown()
+        # Create and start the bot
+        bot = CryptoSatBot()
+
+        try:
+            await bot.start()
+        except KeyboardInterrupt:
+            logger.info("[INTERRUPT] Received keyboard interrupt")
+        except Exception as e:
+            logger.error(f"[FATAL] Fatal error: {e}")
+        finally:
+            await bot.shutdown()
 
 
 if __name__ == "__main__":

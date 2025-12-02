@@ -41,10 +41,43 @@ class Settings:
     LOG_FILE: str = os.getenv("LOG_FILE", "logs/cryptosat.log")
     
     # Bot Configuration
-    WHITELISTED_USERS: List[int] = [
-        int(user_id.strip()) for user_id in os.getenv("WHITELISTED_USERS", "").split(",") 
-        if user_id.strip()
-    ]
+    TELEGRAM_OWNER_ID: int = int(os.getenv("TELEGRAM_OWNER_ID", "0"))
+    TELEGRAM_ADMIN_CHAT_ID: str = os.getenv("TELEGRAM_ADMIN_CHAT_ID")
+    TELEGRAM_ALERT_CHANNEL_ID: str = os.getenv("TELEGRAM_ALERT_CHANNEL_ID")
+    TELEGRAM_WHITELIST_IDS: str = os.getenv("TELEGRAM_WHITELIST_IDS", "")
+    TELEGRAM_PRIVATE_BOT: bool = os.getenv("TELEGRAM_PRIVATE_BOT", "true").lower() == "true"
+    
+    # Legacy support - parse old WHITELISTED_USERS if new whitelist is empty
+    @property
+    def WHITELISTED_USERS(self) -> List[int]:
+        """Legacy property for backward compatibility"""
+        if self.TELEGRAM_WHITELIST_IDS:
+            return [
+                int(user_id.strip()) for user_id in self.TELEGRAM_WHITELIST_IDS.split(",") 
+                if user_id.strip()
+            ]
+        else:
+            # Fallback to old format
+            return [
+                int(user_id.strip()) for user_id in os.getenv("WHITELISTED_USERS", "").split(",") 
+                if user_id.strip()
+            ]
+    
+    @property
+    def whitelist_ids(self) -> set[int]:
+        """Get whitelist as a set for efficient lookup"""
+        ids = set()
+        if self.TELEGRAM_WHITELIST_IDS:
+            for part in self.TELEGRAM_WHITELIST_IDS.split(","):
+                part = part.strip()
+                if part:
+                    try:
+                        ids.add(int(part))
+                    except ValueError:
+                        from loguru import logger
+                        logger.warning(f"Invalid user id in TELEGRAM_WHITELIST_IDS: {part!r}")
+        return ids
+    
     ENABLE_BROADCAST_ALERTS: bool = os.getenv("ENABLE_BROADCAST_ALERTS", "true").lower() == "true"
     ENABLE_WHALE_ALERTS: bool = os.getenv("ENABLE_WHALE_ALERTS", "true").lower() == "true"
     

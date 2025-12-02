@@ -1,8 +1,11 @@
 import asyncio
+import re
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+from functools import wraps
 from loguru import logger
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.helpers import escape_markdown
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -17,6 +20,72 @@ from services.liquidation_monitor import liquidation_monitor
 from services.whale_watcher import whale_watcher
 from services.funding_rate_radar import funding_rate_radar
 from services.coinglass_api import coinglass_api
+from utils.auth import is_user_allowed, log_access_attempt, get_access_status_message
+
+
+def require_access(func):
+    """
+    Decorator to check if user is allowed to access the bot.
+    Replaces the old _is_whitelisted method with centralized auth.
+    """
+    @wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        user = update.effective_user
+        user_id = user.id if user else None
+        username = user.username or user.first_name if user else "Unknown"
+        command = update.message.text.split()[0] if update.message and update.message.text else "unknown"
+
+        if user_id is None:
+            logger.warning("[AUTH] Update without user, denying access")
+            await update.effective_message.reply_text(
+                "🚫 Access Denied\nUnable to identify user.",
+                parse_mode=None,
+            )
+            return
+
+        # Check access using centralized auth
+        if not is_user_allowed(user_id):
+            log_access_attempt(user_id, username, command, allowed=False)
+            await update.effective_message.reply_text(
+                "🚫 *Access Denied*\n"
+                "This is a private bot. You need to be whitelisted to use it.\n"
+                "Please contact the administrator for access.",
+                parse_mode="Markdown",
+            )
+            return
+
+        # Log successful access
+        log_access_attempt(user_id, username, command, allowed=True)
+        return await func(update, context, *args, **kwargs)
+    
+    return wrapper
+
+
+def require_public_access(func):
+    """
+    Decorator for commands that should be public (like /status or /ping).
+    Only denies access if user cannot be identified.
+    """
+    @wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        user = update.effective_user
+        user_id = user.id if user else None
+        username = user.username or user.first_name if user else "Unknown"
+        command = update.message.text.split()[0] if update.message and update.message.text else "unknown"
+
+        if user_id is None:
+            logger.warning("[AUTH] Update without user, denying access")
+            await update.effective_message.reply_text(
+                "🚫 Access Denied\nUnable to identify user.",
+                parse_mode=None,
+            )
+            return
+
+        # Always allow access for public commands, just log it
+        log_access_attempt(user_id, username, command, allowed=True)
+        return await func(update, context, *args, **kwargs)
+    
+    return wrapper
 
 
 class TelegramBot:
@@ -28,6 +97,11 @@ class TelegramBot:
         self.alert_channel_id = settings.TELEGRAM_ALERT_CHANNEL_ID
         self.whitelisted_users = settings.WHITELISTED_USERS
         self.application = None
+
+    def sanitize(self, msg: str) -> str:
+        """Escape all Telegram MarkdownV2 special characters"""
+        import re
+        return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', msg)
 
     async def initialize(self):
         """Initialize the Telegram bot"""
@@ -88,26 +162,14 @@ class TelegramBot:
         # Check if user is in whitelist
         return user_id in self.whitelisted_users
 
+    @require_access
     async def handle_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command"""
-        user_id = update.effective_user.id
-        username = update.effective_user.username or update.effective_user.first_name
-
-        # Log incoming update
-        logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /start command")
-
-        if not self._is_whitelisted(user_id):
-            logger.warning(f"[TELEGRAM] User {user_id} (@{username}) denied access - not whitelisted")
-            await update.message.reply_text(
-                "🚫 *Access Denied*\n\n"
-                "This is a private bot. You need to be whitelisted to use it.\n"
-                "Please contact the administrator for access.",
-                parse_mode="Markdown",
-            )
-            return
+        user = update.effective_user
+        username = user.username or user.first_name
 
         welcome_message = (
-            f"🛸 *Welcome to CryptoSat Bot, {username}!*\n\n"
+            f"🛸 *Welcome to CryptoSat Bot, {self.sanitize(username)}!*\n\n"
             "🎯 *High-Frequency Trading Signals & Market Intelligence*\n\n"
             "📊 *Available Commands:*\n"
             "/liq `[SYMBOL]` - Get liquidation data\n"
@@ -125,25 +187,11 @@ class TelegramBot:
             "⚡ Powered by CoinGlass API v4"
         )
 
-        await update.message.reply_text(welcome_message, parse_mode="Markdown")
+        await update.message.reply_text(welcome_message, parse_mode="MarkdownV2")
 
+    @require_access
     async def handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command"""
-        user_id = update.effective_user.id
-        username = update.effective_user.username or update.effective_user.first_name
-        
-        # Log incoming update
-        logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /help command")
-
-        if not self._is_whitelisted(user_id):
-            logger.warning(f"[TELEGRAM] User {user_id} (@{username}) denied access to /help - not whitelisted")
-            await update.message.reply_text(
-                "🚫 *Access Denied*\n\n"
-                "This is a private bot. You need to be whitelisted to use it.\n"
-                "Please contact the administrator for access.",
-                parse_mode="Markdown",
-            )
-            return
 
         help_message = (
             "📖 *CryptoSat Bot Help*\n\n"
@@ -174,22 +222,13 @@ class TelegramBot:
             "⚡ Data updates every 5-30 seconds"
         )
 
-        await update.message.reply_text(help_message, parse_mode="Markdown")
+        await update.message.reply_text(help_message, parse_mode="MarkdownV2")
 
+    @require_access
     async def handle_liquidation(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ):
         """Handle /liq command"""
-        user_id = update.effective_user.id
-        username = update.effective_user.username or update.effective_user.first_name
-        
-        # Log incoming update
-        symbol = context.args[0].upper() if context.args else None
-        logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /liq command for {symbol or 'no symbol'}")
-
-        if not self._is_whitelisted(user_id):
-            logger.warning(f"[TELEGRAM] User {user_id} (@{username}) denied access to /liq - not whitelisted")
-            return
 
         # Extract symbol from command
         symbol = None
@@ -198,10 +237,10 @@ class TelegramBot:
 
         if not symbol:
             await update.message.reply_text(
-                "❌ *Symbol Required*\n\n"
+                self.sanitize("❌ *Symbol Required*\n\n"
                 "Usage: /liq `[SYMBOL]`\n"
-                "Example: /liq BTC",
-                parse_mode="Markdown",
+                "Example: /liq BTC"),
+                parse_mode="MarkdownV2",
             )
             return
 
@@ -212,10 +251,10 @@ class TelegramBot:
 
         if not liquidation_data:
             await update.message.reply_text(
-                f"❌ *No Data Found*\n\n"
-                f"Could not retrieve liquidation data for `{symbol}`\n"
-                "Please check the symbol and try again.",
-                parse_mode="Markdown",
+                self.sanitize(f"❌ *No Data Found*\n\n"
+                f"Could not retrieve liquidation data for {symbol}\n"
+                "Please check the symbol and try again."),
+                parse_mode="MarkdownV2",
             )
             return
 
@@ -224,38 +263,30 @@ class TelegramBot:
         price_emoji = "🔴" if liquidation_data["price_change"] < 0 else "🟢"
 
         message = (
-            f"{liq_emoji} *{symbol} Liquidation Data*\n\n"
+            f"{liq_emoji} *{self.sanitize(symbol)} Liquidation Data*\n\n"
             f"💰 Total Liquidations: ${liquidation_data['liquidation_usd']:,.0f}\n"
             f"{price_emoji} Price Change: {liquidation_data['price_change']:+.2f}%\n"
             f"📊 24h Volume: ${liquidation_data['volume_24h']:,.0f}\n"
             f"🕐 Last Update: {liquidation_data['last_update']}\n\n"
         )
 
-        await update.message.reply_text(message, parse_mode="Markdown")
+        await update.message.reply_text(message, parse_mode="MarkdownV2")
 
+    @require_access
     async def handle_sentiment(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ):
         """Handle /sentiment command"""
-        user_id = update.effective_user.id
-        username = update.effective_user.username or update.effective_user.first_name
-        
-        # Log incoming update
-        logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /sentiment command")
-
-        if not self._is_whitelisted(user_id):
-            logger.warning(f"[TELEGRAM] User {user_id} (@{username}) denied access to /sentiment - not whitelisted")
-            return
 
         # Get Fear & Greed Index
         fear_greed = await funding_rate_radar.get_fear_greed_index()
 
         if not fear_greed:
             await update.message.reply_text(
-                "❌ *Service Unavailable*\n\n"
+                self.sanitize("❌ *Service Unavailable*\n\n"
                 "Could not retrieve market sentiment data.\n"
-                "Please try again in a few moments.",
-                parse_mode="Markdown",
+                "Please try again in a few moments."),
+                parse_mode="MarkdownV2",
             )
             return
 
@@ -275,9 +306,9 @@ class TelegramBot:
         message = (
             f"{emoji} *Market Sentiment Analysis*\n\n"
             f"📊 Fear & Greed Index: {value}\n"
-            f"🏷️ Classification: {fear_greed['classification']}\n"
-            f"📝 Interpretation: {fear_greed['interpretation']}\n"
-            f"🕐 Updated: {fear_greed['timestamp']}\n\n"
+            f"🏷️ Classification: {self.sanitize(fear_greed['classification'])}\n"
+            f"📝 Interpretation: {self.sanitize(fear_greed['interpretation'])}\n"
+            f"🕐 Updated: {self.sanitize(fear_greed['timestamp'])}\n\n"
             f"📈 *Market Overview:*\n"
             f"• Extreme Fear (0-20): Good buying opportunity\n"
             f"• Fear (20-40): Accumulate gradually\n"
@@ -286,29 +317,21 @@ class TelegramBot:
             f"• Extreme Greed (80-100): High risk zone"
         )
 
-        await update.message.reply_text(message, parse_mode="Markdown")
+        await update.message.reply_text(message, parse_mode="MarkdownV2")
 
+    @require_access
     async def handle_whale(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /whale command"""
-        user_id = update.effective_user.id
-        username = update.effective_user.username or update.effective_user.first_name
-        
-        # Log incoming update
-        logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /whale command")
-
-        if not self._is_whitelisted(user_id):
-            logger.warning(f"[TELEGRAM] User {user_id} (@{username}) denied access to /whale - not whitelisted")
-            return
 
         # Get recent whale activity
         whale_activity = await whale_watcher.get_recent_whale_activity(limit=5)
 
         if not whale_activity:
             await update.message.reply_text(
-                "🐋 *Recent Whale Activity*\n\n"
+                self.sanitize("🐋 *Recent Whale Activity*\n\n"
                 "No significant whale transactions detected in the last 24 hours.\n"
-                "Whale threshold: $500,000+",
-                parse_mode="Markdown",
+                "Whale threshold: $500,000+"),
+                parse_mode="MarkdownV2",
             )
             return
 
@@ -322,7 +345,7 @@ class TelegramBot:
             timestamp = datetime.fromisoformat(tx["timestamp"]).strftime("%H:%M:%S")
 
             message += (
-                f"{i}. {side_emoji} *{tx['symbol']}* - {side_text}\n"
+                f"{i}. {side_emoji} *{self.sanitize(tx['symbol'])}* - {side_text}\n"
                 f"   💰 ${tx['amount_usd']:,.0f} @ ${tx['price']:,.4f}\n"
                 f"   🕐 {timestamp} UTC\n\n"
             )
@@ -331,14 +354,13 @@ class TelegramBot:
         message += "💸 Minimum: $500,000\n"
         message += "🏦 Source: Hyperliquid"
 
-        await update.message.reply_text(message, parse_mode="Markdown")
+        await update.message.reply_text(message, parse_mode="MarkdownV2")
 
+    @require_access
     async def handle_subscribe(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ):
         """Handle /subscribe command"""
-        if not self._is_whitelisted(update.effective_user.id):
-            return
 
         # Extract symbol from command
         symbol = None
@@ -374,9 +396,9 @@ class TelegramBot:
             reply_markup = InlineKeyboardMarkup(keyboard)
 
             await update.message.reply_text(
-                f"🔔 *Subscribe to Alerts*\n\n"
-                f"Choose alert type for `{symbol or 'BTC'}`:",
-                parse_mode="Markdown",
+                self.sanitize(f"🔔 *Subscribe to Alerts*\n\n"
+                f"Choose alert type for `{symbol or 'BTC'}`:"),
+                parse_mode="MarkdownV2",
                 reply_markup=reply_markup,
             )
             return
@@ -392,27 +414,26 @@ class TelegramBot:
 
         if success:
             await update.message.reply_text(
-                f"✅ *Subscription Successful*\n\n"
+                self.sanitize(f"✅ *Subscription Successful*\n\n"
                 f"You're now subscribed to all alerts for `{symbol}`:\n"
                 f"• 🚨 Massive Liquidations (>$1M)\n"
                 f"• 🐋 Whale Transactions (>$500K)\n"
                 f"• 💰 Extreme Funding Rates (±1%)\n\n"
-                f"Use /alerts to manage your subscriptions.",
-                parse_mode="Markdown",
+                f"Use /alerts to manage your subscriptions."),
+                parse_mode="MarkdownV2",
             )
         else:
             await update.message.reply_text(
-                "❌ *Subscription Failed*\n\n"
-                "Could not process your subscription. Please try again.",
-                parse_mode="Markdown",
+                self.sanitize("❌ *Subscription Failed*\n\n"
+                "Could not process your subscription. Please try again."),
+                parse_mode="MarkdownV2",
             )
 
+    @require_access
     async def handle_unsubscribe(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ):
         """Handle /unsubscribe command"""
-        if not self._is_whitelisted(update.effective_user.id):
-            return
 
         # Extract symbol from command
         symbol = None
@@ -421,10 +442,10 @@ class TelegramBot:
 
         if not symbol:
             await update.message.reply_text(
-                "❌ *Symbol Required*\n\n"
+                self.sanitize("❌ *Symbol Required*\n\n"
                 "Usage: /unsubscribe `[SYMBOL]`\n"
-                "Example: /unsubscribe BTC",
-                parse_mode="Markdown",
+                "Example: /unsubscribe BTC"),
+                parse_mode="MarkdownV2",
             )
             return
 
@@ -435,21 +456,20 @@ class TelegramBot:
 
         if success:
             await update.message.reply_text(
-                f"✅ *Unsubscribed*\n\n"
-                f"You've been unsubscribed from all alerts for `{symbol}`.",
-                parse_mode="Markdown",
+                self.sanitize(f"✅ *Unsubscribed*\n\n"
+                f"You've been unsubscribed from all alerts for {symbol}."),
+                parse_mode="MarkdownV2",
             )
         else:
             await update.message.reply_text(
-                "❌ *Unsubscribe Failed*\n\n"
-                "You may not have an active subscription for this symbol.",
-                parse_mode="Markdown",
+                self.sanitize("❌ *Unsubscribe Failed*\n\n"
+                "You may not have an active subscription for this symbol."),
+                parse_mode="MarkdownV2",
             )
 
+    @require_access
     async def handle_alerts(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /alerts command - show user's subscriptions"""
-        if not self._is_whitelisted(update.effective_user.id):
-            return
 
         subscriptions = await db_manager.get_user_subscriptions(
             update.effective_user.id
@@ -457,10 +477,10 @@ class TelegramBot:
 
         if not subscriptions:
             await update.message.reply_text(
-                "📭 *No Active Subscriptions*\n\n"
+                self.sanitize("📭 *No Active Subscriptions*\n\n"
                 "You're not subscribed to any alerts.\n"
-                "Use /subscribe `[SYMBOL]` to get started.",
-                parse_mode="Markdown",
+                "Use /subscribe `[SYMBOL]` to get started."),
+                parse_mode="MarkdownV2",
             )
             return
 
@@ -469,17 +489,16 @@ class TelegramBot:
         for sub in subscriptions:
             alert_types = ", ".join([f"• {t.title()}" for t in sub.alert_types])
             message += (
-                f"📊 *{sub.symbol}*\n"
+                f"📊 *{self.sanitize(sub.symbol)}*\n"
                 f"{alert_types}\n"
                 f"🕐 Subscribed: {sub.created_at[:10]}\n\n"
             )
 
-        await update.message.reply_text(message, parse_mode="Markdown")
+        await update.message.reply_text(message, parse_mode="MarkdownV2")
 
+    @require_access
     async def handle_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /status command"""
-        if not self._is_whitelisted(update.effective_user.id):
-            return
 
         # This would typically include API rate limit info, bot uptime, etc.
         # For now, provide basic status
@@ -497,8 +516,9 @@ class TelegramBot:
             f"🕐 Uptime: Bot is running"
         )
 
-        await update.message.reply_text(message, parse_mode="Markdown")
+        await update.message.reply_text(message, parse_mode="MarkdownV2")
 
+    @require_access
     async def handle_alerts_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /alerts_status command - show which alerts are ON/OFF"""
         user_id = update.effective_user.id
@@ -506,10 +526,6 @@ class TelegramBot:
         
         # Log incoming update
         logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /alerts_status command")
-
-        if not self._is_whitelisted(user_id):
-            logger.warning(f"[TELEGRAM] User {user_id} (@{username}) denied access to /alerts_status - not whitelisted")
-            return
 
         # Build status message
         whale_status = "🟢 ON" if settings.ENABLE_WHALE_ALERTS else "🔴 OFF"
@@ -531,8 +547,9 @@ class TelegramBot:
             "/alerts_status - Show this status"
         )
 
-        await update.message.reply_text(message, parse_mode="Markdown")
+        await update.message.reply_text(message, parse_mode="MarkdownV2")
 
+    @require_access
     async def handle_alerts_on_whale(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /alerts_on_w command - turn ON whale alerts"""
         user_id = update.effective_user.id
@@ -541,30 +558,27 @@ class TelegramBot:
         # Log incoming update
         logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /alerts_on_w command")
 
-        if not self._is_whitelisted(user_id):
-            logger.warning(f"[TELEGRAM] User {user_id} (@{username}) denied access to /alerts_on_w - not whitelisted")
-            return
-
         # Update settings (this would typically modify environment variables or config)
         # For now, just show confirmation and current status
         if settings.ENABLE_WHALE_ALERTS:
             await update.message.reply_text(
-                "🐋 *Whale alerts already enabled*\n\n"
+                self.sanitize("🐋 *Whale alerts already enabled*\n\n"
                 "Whale monitoring is currently running and will automatically\n"
-                "alert you to significant whale transactions (>$500K).",
-                parse_mode="Markdown",
+                "alert you to significant whale transactions (>$500K)."),
+                parse_mode="MarkdownV2",
             )
         else:
             await update.message.reply_text(
-                "⚠️ *Configuration Required*\n\n"
+                self.sanitize("⚠️ *Configuration Required*\n\n"
                 "To enable whale alerts, please set:\n"
                 "`ENABLE_WHALE_ALERTS=true` in your environment\n\n"
                 "Then restart the bot for changes to take effect.\n\n"
-                "Current status: Whale alerts are DISABLED",
-                parse_mode="Markdown",
+                "Current status: Whale alerts are DISABLED"),
+                parse_mode="MarkdownV2",
             )
             logger.warning(f"[ALERT_CONTROL] User {user_id} tried to enable whale alerts but ENABLE_WHALE_ALERTS=false")
 
+    @require_access
     async def handle_alerts_off_whale(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /alerts_off_w command - turn OFF whale alerts"""
         user_id = update.effective_user.id
@@ -573,28 +587,25 @@ class TelegramBot:
         # Log incoming update
         logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /alerts_off_w command")
 
-        if not self._is_whitelisted(user_id):
-            logger.warning(f"[TELEGRAM] User {user_id} (@{username}) denied access to /alerts_off_w - not whitelisted")
-            return
-
         if not settings.ENABLE_WHALE_ALERTS:
             await update.message.reply_text(
-                "🐋 *Whale alerts already disabled*\n\n"
+                self.sanitize("🐋 *Whale alerts already disabled*\n\n"
                 "Whale monitoring is currently not running automatically.\n"
-                "You can still use /whale command for manual checks.",
-                parse_mode="Markdown",
+                "You can still use /whale command for manual checks."),
+                parse_mode="MarkdownV2",
             )
         else:
             await update.message.reply_text(
-                "⚠️ *Configuration Required*\n\n"
+                self.sanitize("⚠️ *Configuration Required*\n\n"
                 "To disable whale alerts, please set:\n"
                 "`ENABLE_WHALE_ALERTS=false` in your environment\n\n"
                 "Then restart the bot for changes to take effect.\n\n"
-                "Current status: Whale alerts are ENABLED",
-                parse_mode="Markdown",
+                "Current status: Whale alerts are ENABLED"),
+                parse_mode="MarkdownV2",
             )
             logger.info(f"[ALERT_CONTROL] User {user_id} tried to disable whale alerts but needs config change")
 
+    @require_access
     async def handle_raw_data(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /raw command - standardized comprehensive market data"""
         user_id = update.effective_user.id
@@ -623,10 +634,6 @@ class TelegramBot:
 
         # Log incoming update
         logger.info(f"[/raw] user_id={user_id} username={username} symbol={args_raw}")
-
-        if not self._is_whitelisted(user_id):
-            logger.warning(f"[/raw] User {user_id} (@{username}) denied access - not whitelisted")
-            return
 
         # Send typing action to show we're working
         await update.message.chat.send_action(action="typing")
@@ -1248,13 +1255,11 @@ Resistance: ${resistance_str}"""
             logger.error(f"[RAW_DATA] Error formatting market data: {e}")
             return f"❌ Error formatting market data for {data.get('symbol', 'UNKNOWN')}"
 
+    @require_access
     async def handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle callback queries from inline keyboards"""
         query = update.callback_query
         await query.answer()  # Acknowledge the callback
-
-        if not self._is_whitelisted(query.from_user.id):
-            return
 
         # Parse callback data
         data = query.data
@@ -1279,27 +1284,25 @@ Resistance: ${resistance_str}"""
             if success:
                 alert_text = "All alerts" if alert_type == "all" else alert_type.title()
                 await query.edit_message_text(
-                    f"✅ *Subscribed to {alert_text} for {symbol}*\n\n"
-                    f"You'll receive notifications when significant events occur.",
-                    parse_mode="Markdown",
+                    self.sanitize(f"✅ *Subscribed to {alert_text} for {symbol}*\n\n"
+                    "You'll receive notifications when significant events occur."),
+                    parse_mode="MarkdownV2",
                 )
             else:
                 await query.edit_message_text(
-                    "❌ *Subscription Failed*\n\n" "Please try again later.",
-                    parse_mode="Markdown",
+                    self.sanitize("❌ *Subscription Failed*\n\n" "Please try again later."),
+                    parse_mode="MarkdownV2",
                 )
 
+    @require_access
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle non-command messages"""
-        if not self._is_whitelisted(update.effective_user.id):
-            return
-
         # Simple message handling - provide help
         await update.message.reply_text(
-            "👋 *Hello!*\n\n"
+            self.sanitize("👋 *Hello!*\n\n"
             "Use /help to see available commands.\n"
-            "I'm here to provide real-time crypto trading signals!",
-            parse_mode="Markdown",
+            "I'm here to provide real-time crypto trading signals!"),
+            parse_mode="MarkdownV2",
         )
 
     async def broadcast_alert(self, message: str):
@@ -1309,7 +1312,7 @@ Resistance: ${resistance_str}"""
 
         try:
             await self.application.bot.send_message(
-                chat_id=self.alert_channel_id, text=message, parse_mode="Markdown"
+                chat_id=self.alert_channel_id, text=self.sanitize(message), parse_mode="MarkdownV2"
             )
             logger.info(f"Alert broadcasted to channel {self.alert_channel_id}")
         except Exception as e:
@@ -1322,12 +1325,64 @@ Resistance: ${resistance_str}"""
 
         logger.info("Starting CryptoSat Telegram bot...")
         await self.application.initialize()
+        
+        # Aggressive cleanup before starting
+        logger.info("Performing aggressive webhook cleanup...")
+        try:
+            # Delete any existing webhook
+            await self.application.bot.delete_webhook(drop_pending_updates=True)
+            logger.info("Webhook deleted successfully")
+            
+            # Get webhook info to confirm it's cleared
+            webhook_info = await self.application.bot.get_webhook_info()
+            if webhook_info.url:
+                logger.warning(f"Webhook still active: {webhook_info.url}")
+                # Force delete again
+                await self.application.bot.delete_webhook(drop_pending_updates=True)
+                await asyncio.sleep(2)  # Wait for cleanup
+            else:
+                logger.info("Webhook confirmed cleared")
+                
+        except Exception as e:
+            logger.warning(f"Webhook cleanup failed: {e}")
+        
         await self.application.start()
         
-        # Start polling - this is the missing piece!
-        await self.application.updater.start_polling(drop_pending_updates=True)
+        # Start polling with aggressive conflict resolution
+        max_retries = 3
+        retry_delay = 5
         
-        logger.info("CryptoSat bot started successfully with polling enabled")
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Starting polling attempt {attempt + 1}/{max_retries}")
+                await self.application.updater.start_polling(
+                    drop_pending_updates=True,
+                    allowed_updates=None,
+                    timeout=10,
+                    read_timeout=5,
+                    write_timeout=5,
+                    connect_timeout=5,
+                    pool_timeout=1
+                )
+                logger.info("CryptoSat bot started successfully with polling enabled")
+                return  # Success, exit the retry loop
+                
+            except Exception as e:
+                logger.error(f"Polling attempt {attempt + 1} failed: {e}")
+                
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    await asyncio.sleep(retry_delay)
+                    
+                    # Additional cleanup between retries
+                    try:
+                        await self.application.bot.delete_webhook(drop_pending_updates=True)
+                        logger.info("Additional webhook cleanup performed")
+                    except Exception as cleanup_e:
+                        logger.warning(f"Additional cleanup failed: {cleanup_e}")
+                else:
+                    logger.error("All polling attempts failed")
+                    raise
 
     async def stop(self):
         """Stop the bot"""
