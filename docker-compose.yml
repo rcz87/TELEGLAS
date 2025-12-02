@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  cryptosat-bot:
+    build: .
+    container_name: cryptosat-bot
+    restart: unless-stopped
+    environment:
+      # CoinGlass API Configuration
+      - COINGLASS_API_KEY=${COINGLASS_API_KEY}
+      - COINGLASS_BASE_URL=https://open-api.coinglass.com/public
+      
+      # Telegram Bot Configuration
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_ADMIN_CHAT_ID=${TELEGRAM_ADMIN_CHAT_ID}
+      - TELEGRAM_ALERT_CHANNEL_ID=${TELEGRAM_ALERT_CHANNEL_ID}
+      - WHITELISTED_USERS=${WHITELISTED_USERS}
+      - ENABLE_BROADCAST_ALERTS=${ENABLE_BROADCAST_ALERTS:-true}
+      
+      # Database Configuration
+      - DATABASE_URL=sqlite:///data/cryptosat.db
+      
+      # Monitoring Configuration
+      - LIQUIDATION_THRESHOLD_USD=${LIQUIDATION_THRESHOLD_USD:-1000000}
+      - WHALE_TRANSACTION_THRESHOLD_USD=${WHALE_TRANSACTION_THRESHOLD_USD:-500000}
+      - EXTREME_FUNDING_RATE=${EXTREME_FUNDING_RATE:-0.01}
+      - LIQUIDATION_POLL_INTERVAL=${LIQUIDATION_POLL_INTERVAL:-10}
+      - WHALE_POLL_INTERVAL=${WHALE_POLL_INTERVAL:-5}
+      - FUNDING_RATE_POLL_INTERVAL=${FUNDING_RATE_POLL_INTERVAL:-30}
+      
+      # API Rate Limiting
+      - API_CALLS_PER_MINUTE=${API_CALLS_PER_MINUTE:-100}
+      
+      # Logging Configuration
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FILE=/app/logs/cryptosat.log
+    
+    volumes:
+      # Persist database
+      - ./data:/app/data
+      # Persist logs
+      - ./logs:/app/logs
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sqlite3; sqlite3.connect('/app/data/cryptosat.db')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Resource limits (optional but recommended)
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # Optional: Redis for enhanced performance (future feature)
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: cryptosat-redis
+  #   restart: unless-stopped
+  #   volumes:
+  #     - redis_data:/data
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '0.25'
+  #         memory: 128M
+
+# volumes:
+#   redis_data:

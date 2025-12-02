@@ -1,0 +1,272 @@
+import asyncio
+import signal
+import sys
+from typing import List
+from loguru import logger
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from config.settings import settings
+from core.database import db_manager
+from handlers.telegram_bot import telegram_bot
+from services.liquidation_monitor import liquidation_monitor
+from services.whale_watcher import whale_watcher
+from services.funding_rate_radar import funding_rate_radar
+
+
+class CryptoSatBot:
+    """Main CryptoSat bot application orchestrator"""
+
+    def __init__(self):
+        self.scheduler = AsyncIOScheduler()
+        self.running = False
+        self.monitoring_tasks: List[asyncio.Task] = []
+
+    async def initialize(self):
+        """Initialize all components"""
+        logger.info("🚀 Initializing CryptoSat Bot...")
+
+        # Validate settings
+        settings.validate()
+        logger.info("✅ Configuration validated")
+
+        # Initialize database
+        await db_manager.initialize()
+        logger.info("✅ Database initialized")
+
+        # Initialize Telegram bot
+        await telegram_bot.initialize()
+        logger.info("✅ Telegram bot initialized")
+
+        # Set up scheduler for periodic tasks
+        self._setup_scheduler()
+        logger.info("✅ Scheduler configured")
+
+        # Set up signal handlers for graceful shutdown
+        self._setup_signal_handlers()
+
+        logger.info("🎉 CryptoSat Bot initialization complete!")
+
+    def _setup_scheduler(self):
+        """Set up periodic tasks with APScheduler"""
+        # Cleanup old data daily at 2 AM UTC
+        self.scheduler.add_job(
+            self._cleanup_data,
+            "cron",
+            hour=2,
+            minute=0,
+            id="cleanup_data",
+            name="Cleanup old data",
+        )
+
+        # Health check every 5 minutes
+        self.scheduler.add_job(
+            self._health_check,
+            "interval",
+            minutes=5,
+            id="health_check",
+            name="Health check",
+        )
+
+        # Alert broadcasting task every 30 seconds
+        self.scheduler.add_job(
+            self._broadcast_pending_alerts,
+            "interval",
+            seconds=30,
+            id="broadcast_alerts",
+            name="Broadcast pending alerts",
+        )
+
+    def _setup_signal_handlers(self):
+        """Set up signal handlers for graceful shutdown"""
+
+        def signal_handler(signum, frame):
+            logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+            asyncio.create_task(self.shutdown())
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+    async def start_monitoring_services(self):
+        """Start all background monitoring services"""
+        logger.info("🔄 Starting monitoring services...")
+
+        # Start liquidation monitoring
+        task1 = asyncio.create_task(liquidation_monitor.start_monitoring())
+        self.monitoring_tasks.append(task1)
+
+        # Start whale watching
+        task2 = asyncio.create_task(whale_watcher.start_monitoring())
+        self.monitoring_tasks.append(task2)
+
+        # Start funding rate monitoring
+        task3 = asyncio.create_task(funding_rate_radar.start_monitoring())
+        self.monitoring_tasks.append(task3)
+
+        logger.info("✅ All monitoring services started")
+
+    async def _cleanup_data(self):
+        """Clean up old data from database"""
+        try:
+            logger.info("🧹 Starting data cleanup...")
+            await db_manager.cleanup_old_data(days=7)
+            logger.info("✅ Data cleanup completed")
+        except Exception as e:
+            logger.error(f"❌ Data cleanup failed: {e}")
+
+    async def _health_check(self):
+        """Perform health check on all services"""
+        try:
+            # Check monitoring tasks
+            for i, task in enumerate(self.monitoring_tasks):
+                if task.done():
+                    logger.warning(
+                        f"⚠️ Monitoring task {i} has stopped: {task.exception()}"
+                    )
+                    # Restart the task if it failed
+                    self.monitoring_tasks.pop(i)
+                    await self._restart_monitoring_task(i)
+
+            # Log basic health status
+            logger.info("💚 Health check passed - all systems operational")
+
+        except Exception as e:
+            logger.error(f"❌ Health check failed: {e}")
+
+    async def _restart_monitoring_task(self, task_index: int):
+        """Restart a failed monitoring task"""
+        try:
+            if task_index == 0:  # Liquidation monitor
+                task = asyncio.create_task(liquidation_monitor.start_monitoring())
+                self.monitoring_tasks.insert(0, task)
+                logger.info("🔄 Restarted liquidation monitoring")
+            elif task_index == 1:  # Whale watcher
+                task = asyncio.create_task(whale_watcher.start_monitoring())
+                self.monitoring_tasks.insert(1, task)
+                logger.info("🔄 Restarted whale monitoring")
+            elif task_index == 2:  # Funding rate radar
+                task = asyncio.create_task(funding_rate_radar.start_monitoring())
+                self.monitoring_tasks.insert(2, task)
+                logger.info("🔄 Restarted funding rate monitoring")
+        except Exception as e:
+            logger.error(f"❌ Failed to restart monitoring task {task_index}: {e}")
+
+    async def _broadcast_pending_alerts(self):
+        """Broadcast pending alerts to Telegram channel"""
+        try:
+            alerts = await db_manager.get_pending_alerts(limit=10)
+
+            for alert in alerts:
+                await telegram_bot.broadcast_alert(alert["message"])
+                await db_manager.mark_alert_sent(alert["id"])
+                logger.debug(f"Broadcasted alert {alert['id']}")
+
+            if alerts:
+                logger.info(f"📢 Broadcasted {len(alerts)} alerts")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to broadcast alerts: {e}")
+
+    async def start(self):
+        """Start the CryptoSat bot"""
+        try:
+            # Initialize all components
+            await self.initialize()
+
+            # Start monitoring services
+            await self.start_monitoring_services()
+
+            # Start scheduler
+            self.scheduler.start()
+            logger.info("⏰ Scheduler started")
+
+            # Start Telegram bot
+            await telegram_bot.start()
+
+            # Set running state
+            self.running = True
+            logger.info("🎯 CryptoSat Bot is now fully operational!")
+
+            # Keep the main coroutine running
+            while self.running:
+                await asyncio.sleep(1)
+
+        except Exception as e:
+            logger.error(f"❌ Failed to start CryptoSat Bot: {e}")
+            await self.shutdown()
+            sys.exit(1)
+
+    async def shutdown(self):
+        """Graceful shutdown of all components"""
+        if not self.running:
+            return
+
+        logger.info("🛑 Initiating graceful shutdown...")
+        self.running = False
+
+        try:
+            # Stop monitoring tasks
+            for i, task in enumerate(self.monitoring_tasks):
+                if not task.done():
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        logger.info(f"✅ Stopped monitoring task {i}")
+
+            self.monitoring_tasks.clear()
+
+            # Stop scheduler
+            if self.scheduler.running:
+                self.scheduler.shutdown(wait=False)
+                logger.info("✅ Scheduler stopped")
+
+            # Stop Telegram bot
+            await telegram_bot.stop()
+            logger.info("✅ Telegram bot stopped")
+
+            logger.info("👋 CryptoSat Bot shutdown complete")
+
+        except Exception as e:
+            logger.error(f"❌ Error during shutdown: {e}")
+
+
+async def main():
+    """Main entry point"""
+    # Configure logging
+    logger.remove()  # Remove default handler
+    logger.add(
+        sys.stdout,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        level=settings.LOG_LEVEL,
+    )
+
+    # Add file logging if specified
+    if settings.LOG_FILE:
+        logger.add(
+            settings.LOG_FILE,
+            rotation="10 MB",
+            retention="7 days",
+            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+            level=settings.LOG_LEVEL,
+        )
+
+    logger.info(
+        "🛸 CryptoSat Bot - High-Frequency Trading Signals & Market Intelligence"
+    )
+    logger.info("⚡ Powered by CoinGlass API v4")
+
+    # Create and start the bot
+    bot = CryptoSatBot()
+
+    try:
+        await bot.start()
+    except KeyboardInterrupt:
+        logger.info("🛑 Received keyboard interrupt")
+    except Exception as e:
+        logger.error(f"❌ Fatal error: {e}")
+    finally:
+        await bot.shutdown()
+
+
+if __name__ == "__main__":
+    # Run the main async function
+    asyncio.run(main())
