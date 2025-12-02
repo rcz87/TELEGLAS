@@ -55,6 +55,20 @@ class RawDataService:
                 rsi_data = results[8] if not isinstance(results[8], Exception) else {}
                 levels_data = results[9] if not isinstance(results[9], Exception) else {}
                 
+                # Add symbol to each data dict for proper extraction
+                if market_data and isinstance(market_data, dict):
+                    market_data["symbol"] = resolved_symbol
+                if oi_data and isinstance(oi_data, dict):
+                    oi_data["symbol"] = resolved_symbol
+                if liquidation_data and isinstance(liquidation_data, dict):
+                    liquidation_data["symbol"] = resolved_symbol
+                if funding_data and isinstance(funding_data, dict):
+                    funding_data["symbol"] = resolved_symbol
+                if ls_data and isinstance(ls_data, dict):
+                    ls_data["symbol"] = resolved_symbol
+                if taker_data and isinstance(taker_data, dict):
+                    taker_data["symbol"] = resolved_symbol
+                    
                 # Aggregate ALL results into ONE Python dict as required with proper structure
                 raw = {
                     "symbol": resolved_symbol,
@@ -183,12 +197,21 @@ class RawDataService:
         if not data:
             return {"last_price": 0.0, "mark_price": 0.0}
         
-        # Find matching symbol
+        # Find matching symbol in the list
         for item in data:
-            if isinstance(item, dict):
+            if isinstance(item, dict) and safe_get(item, "symbol") == safe_get(market_data, "symbol", ""):
                 return {
                     "last_price": safe_float(safe_get(item, "current_price")),
                     "mark_price": safe_float(safe_get(item, "current_price"))  # Use current_price as mark_price
+                }
+        
+        # If no matching symbol, use first item
+        if data and len(data) > 0:
+            first_item = data[0]
+            if isinstance(first_item, dict):
+                return {
+                    "last_price": safe_float(safe_get(first_item, "current_price")),
+                    "mark_price": safe_float(safe_get(first_item, "current_price"))
                 }
         
         return {"last_price": 0.0, "mark_price": 0.0}
@@ -221,17 +244,19 @@ class RawDataService:
         if not data:
             return {"1h": 0.0, "4h": 0.0, "24h": 0.0, "high_24h": 0.0, "low_24h": 0.0, "high_7d": 0.0, "low_7d": 0.0}
         
-        # Find matching symbol
+        # Find matching symbol in the list
+        target_symbol = safe_get(market_data, "symbol", "")
         for item in data:
-            if isinstance(item, dict):
+            if isinstance(item, dict) and safe_get(item, "symbol") == target_symbol:
+                current_price = safe_float(safe_get(item, "current_price"))
                 return {
                     "1h": safe_float(safe_get(item, "price_change_percent_1h")),
                     "4h": safe_float(safe_get(item, "price_change_percent_4h")),
                     "24h": safe_float(safe_get(item, "price_change_percent_24h")),
-                    "high_24h": safe_float(safe_get(item, "current_price")) * 1.02,  # Estimate +2% from current
-                    "low_24h": safe_float(safe_get(item, "current_price")) * 0.98,   # Estimate -2% from current
-                    "high_7d": safe_float(safe_get(item, "current_price")) * 1.05,   # Estimate +5% from current
-                    "low_7d": safe_float(safe_get(item, "current_price")) * 0.95     # Estimate -5% from current
+                    "high_24h": current_price * 1.02,  # Estimate +2% from current
+                    "low_24h": current_price * 0.98,   # Estimate -2% from current
+                    "high_7d": current_price * 1.05,   # Estimate +5% from current
+                    "low_7d": current_price * 0.95     # Estimate -5% from current
                 }
         
         return {"1h": 0.0, "4h": 0.0, "24h": 0.0, "high_24h": 0.0, "low_24h": 0.0, "high_7d": 0.0, "low_7d": 0.0}
@@ -271,9 +296,10 @@ class RawDataService:
         if not data:
             return {"futures_24h": 0.0, "perp_24h": 0.0, "spot_24h": 0.0}
         
-        # Find matching symbol
+        # Find matching symbol in the list
+        target_symbol = safe_get(market_data, "symbol", "")
         for item in data:
-            if isinstance(item, dict):
+            if isinstance(item, dict) and safe_get(item, "symbol") == target_symbol:
                 # Use long/short volume as proxy for total volume
                 long_vol = safe_float(safe_get(item, "long_volume_usd_24h"))
                 short_vol = safe_float(safe_get(item, "short_volume_usd_24h"))
@@ -323,9 +349,10 @@ class RawDataService:
         
         for item in data:
             if isinstance(item, dict):
-                total_liq += safe_float(safe_get(item, "liquidation_usd_24h"))
-                long_liq += safe_float(safe_get(item, "long_liquidation_usd_24h"))
-                short_liq += safe_float(safe_get(item, "short_liquidation_usd_24h"))
+                # Use correct field names from API response
+                total_liq += safe_float(safe_get(item, "liquidation_usd"))
+                long_liq += safe_float(safe_get(item, "longLiquidation_usd"))
+                short_liq += safe_float(safe_get(item, "shortLiquidation_usd"))
         
         return {
             "total_24h": total_liq,
