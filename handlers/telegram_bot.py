@@ -606,8 +606,8 @@ class TelegramBot:
         
         if is_raw_only:
             await update.message.reply_text(
-                "❌ *Symbol Required. Usage: /raw [SYMBOL]*",
-                parse_mode="Markdown",
+                "❌ Symbol Required. Usage: /raw [SYMBOL]",
+                parse_mode=None,
             )
             return
 
@@ -616,8 +616,8 @@ class TelegramBot:
             args_raw = update.message.text.split(maxsplit=1)[1].strip()
         except IndexError:
             await update.message.reply_text(
-                "❌ *Symbol Required. Usage: /raw [SYMBOL]*",
-                parse_mode="Markdown",
+                "❌ Symbol Required. Usage: /raw [SYMBOL]",
+                parse_mode=None,
             )
             return
 
@@ -642,9 +642,9 @@ class TelegramBot:
             # Check if symbol is supported
             if "error" in comprehensive_data and "not supported" in comprehensive_data.get("error", "").lower():
                 await update.message.reply_text(
-                    "❌ *Symbol not supported or data not available from CoinGlass.*\n\n"
+                    "❌ Symbol not supported or data not available from CoinGlass.\n\n"
                     "Please try a major futures symbol like: BTC, ETH, SOL, HYPE, etc.",
-                    parse_mode="Markdown",
+                    parse_mode=None,
                 )
                 logger.info(f"[/raw] Symbol '{args_raw}' not supported by CoinGlass")
                 return
@@ -652,10 +652,10 @@ class TelegramBot:
             # Format to standardized layout
             formatted_message = self._format_standardized_raw_output(comprehensive_data)
 
-            # Send the comprehensive data
+            # Send the comprehensive data as plain text to avoid Markdown parsing errors
             await update.message.reply_text(
                 formatted_message,
-                parse_mode="Markdown",
+                parse_mode=None,  # No Markdown parsing
                 disable_web_page_preview=True
             )
 
@@ -664,16 +664,16 @@ class TelegramBot:
         except SymbolNotSupported as e:
             logger.info(f"[/raw] Symbol not supported: {e}")
             await update.message.reply_text(
-                "❌ *Symbol not supported or data not available from CoinGlass.*\n\n"
+                "❌ Symbol not supported or data not available from CoinGlass.\n\n"
                 "Please try a major futures symbol like: BTC, ETH, SOL, HYPE, etc.",
-                parse_mode="Markdown",
+                parse_mode=None,
             )
         except (RawDataUnavailable, Exception) as e:
             logger.error(f"[/raw] Error fetching raw data for {args_raw}: {e}")
             await update.message.reply_text(
-                f"❌ *Service Error*\n\n"
+                f"❌ Service Error\n\n"
                 f"Failed to fetch raw data for {args_raw}. Please try again later.",
-                parse_mode="Markdown",
+                parse_mode=None,
             )
 
     def _format_standardized_raw_output(self, data: Dict[str, Any]) -> str:
