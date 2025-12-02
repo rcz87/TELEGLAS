@@ -330,7 +330,11 @@ class CoinGlassAPI:
 
     async def get_futures_coins_markets(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         """Get futures coin markets"""
-        params = {}
+        params = {
+            "exchange_list": "Binance,OKX,Bybit",
+            "per_page": 100,
+            "page": 1
+        }
         if symbol:
             params["symbol"] = symbol
         return await self._make_request("/api/futures/coins-markets", params)
