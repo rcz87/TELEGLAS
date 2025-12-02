@@ -340,11 +340,22 @@ class CoinGlassAPI:
         return await self._make_request("/api/futures/supported-exchange-pairs")
 
     async def get_futures_pairs_markets(self, symbol: Optional[str] = None) -> Dict[str, Any]:
-        """Get futures pair markets"""
-        params = {}
-        if symbol:
-            params["symbol"] = symbol
-        return await self._make_request("/api/futures/pairs-markets", params)
+        """Get futures pair markets - uses base symbol (e.g., 'BTC' not 'BTCUSDT')"""
+        try:
+            params = {}
+            if symbol:
+                # For this endpoint, use base symbol without USDT suffix
+                base_symbol = str(symbol).upper().replace("USDT", "").replace("USD", "").replace("PERP", "")
+                params["symbol"] = base_symbol
+            
+            result = await self._make_request("/api/futures/pairs-markets", params)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/pairs-markets reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/pairs-markets reason: {e}")
+            return {"success": False, "data": []}
 
     async def get_futures_coins_markets(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         """Get futures coin markets"""
