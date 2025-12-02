@@ -146,6 +146,10 @@ class CryptoSatBot:
                 task = asyncio.create_task(funding_rate_radar.start_monitoring())
                 self.monitoring_tasks.insert(2, task)
                 logger.info("🔄 Restarted funding rate monitoring")
+            elif task_index >= 3:  # Telegram bot (could be at any position after monitors)
+                task = asyncio.create_task(telegram_bot.start())
+                self.monitoring_tasks.insert(task_index, task)
+                logger.info("🔄 Restarted Telegram bot")
         except Exception as e:
             logger.error(f"❌ Failed to restart monitoring task {task_index}: {e}")
 
@@ -178,8 +182,9 @@ class CryptoSatBot:
             self.scheduler.start()
             logger.info("⏰ Scheduler started")
 
-            # Start Telegram bot
-            await telegram_bot.start()
+            # Start Telegram bot in background (non-blocking)
+            telegram_task = asyncio.create_task(telegram_bot.start())
+            self.monitoring_tasks.append(telegram_task)
 
             # Set running state
             self.running = True
