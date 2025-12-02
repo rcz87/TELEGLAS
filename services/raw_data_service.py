@@ -88,13 +88,9 @@ class RawDataService:
     async def _get_volume_data(self, symbol: str) -> Dict[str, Any]:
         """Get volume data"""
         try:
-            # Get taker buy/sell volume for volume analysis - add required exchange_list parameter
-            volume_data = await self.api.get_aggregated_taker_buy_sell_volume_history(
-                symbol=symbol,
-                interval="1h",
-                exchange_list="Binance,Bybit,OKX"
-            )
-            return volume_data
+            # Get futures coin markets which includes volume data
+            markets_data = await self.api.get_futures_coins_markets(symbol)
+            return markets_data
         except Exception as e:
             logger.error(f"Error getting volume data for {symbol}: {e}")
             return {}
@@ -132,9 +128,13 @@ class RawDataService:
     async def _get_taker_flow_data(self, symbol: str) -> Dict[str, Any]:
         """Get taker flow data for multiple timeframes"""
         try:
-            # Get aggregated taker flow data
-            taker_data = await self.api.get_aggregated_taker_buy_sell_volume_history(symbol)
-            return taker_data
+            # Try to get taker flow data - method may not exist in current API
+            if hasattr(self.api, 'get_aggregated_taker_buy_sell_volume_history'):
+                taker_data = await self.api.get_aggregated_taker_buy_sell_volume_history(symbol)
+                return taker_data
+            else:
+                logger.warning(f"Taker flow method not available in API for {symbol}")
+                return {}
         except Exception as e:
             logger.error(f"Error getting taker flow data for {symbol}: {e}")
             return {}
@@ -142,9 +142,13 @@ class RawDataService:
     async def _get_rsi_data(self, symbol: str) -> Dict[str, Any]:
         """Get RSI data"""
         try:
-            # Get RSI list
-            rsi_data = await self.api.get_rsi_list(symbol)
-            return rsi_data
+            # Try to get RSI data - method may not exist in current API
+            if hasattr(self.api, 'get_rsi_list'):
+                rsi_data = await self.api.get_rsi_list(symbol)
+                return rsi_data
+            else:
+                logger.warning(f"RSI method not available in API for {symbol}")
+                return {}
         except Exception as e:
             logger.error(f"Error getting RSI data for {symbol}: {e}")
             return {}
@@ -152,10 +156,13 @@ class RawDataService:
     async def _get_cg_levels_data(self, symbol: str) -> Dict[str, Any]:
         """Get CoinGlass levels (support/resistance)"""
         try:
-            # For now, we'll use liquidation heatmap as proxy for levels
-            # In a real implementation, this might be a specific CG levels endpoint
-            heatmap_data = await self.api.get_liquidation_aggregated_map(symbol)
-            return heatmap_data
+            # Try to get CG levels - method may not exist in current API
+            if hasattr(self.api, 'get_liquidation_aggregated_map'):
+                heatmap_data = await self.api.get_liquidation_aggregated_map(symbol)
+                return heatmap_data
+            else:
+                logger.warning(f"CG levels method not available in API for {symbol}")
+                return {}
         except Exception as e:
             logger.error(f"Error getting CG levels data for {symbol}: {e}")
             return {}
@@ -449,7 +456,7 @@ class RawDataService:
     def format_for_telegram(self, data: Dict[str, Any]) -> str:
         """Format comprehensive data for Telegram display"""
         if "error" in data:
-            return f"❌ Error fetching data for {data['symbol']}: {data['error']}"
+            return f"[ERROR] Error fetching data for {data['symbol']}: {data['error']}"
         
         general = data.get("general_info", {})
         price_change = data.get("price_change", {})
@@ -469,7 +476,7 @@ class RawDataService:
         resistance_str = ', '.join([f'{x:.2f}' for x in resistance_levels])
         
         # Format message
-        message = f"""📊 **RAW DATA - {data['symbol'].upper()} - REAL PRICE MULTI-TF**
+        message = f"""**RAW DATA - {data['symbol'].upper()} - REAL PRICE MULTI-TF**
 
 **Info Umum**
 Symbol : {data['symbol']}
