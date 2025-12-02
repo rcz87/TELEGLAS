@@ -124,7 +124,8 @@ class RawDataService:
     async def get_liquidations(self, symbol: str) -> Dict[str, Any]:
         """Get liquidation data"""
         try:
-            result = await self.api.get_liquidation_exchange_list(symbol)
+            # Try aggregated history first for better data
+            result = await self.api.get_liquidation_aggregated_history(symbol)
             return result
         except Exception as e:
             logger.error(f"[RAW] Error in get_liquidations for {symbol}: {e}")
@@ -353,10 +354,10 @@ class RawDataService:
         
         for item in data:
             if isinstance(item, dict):
-                # Use correct field names from API response
-                total_liq += safe_float(safe_get(item, "liquidation_usd"))
-                long_liq += safe_float(safe_get(item, "longLiquidation_usd"))
-                short_liq += safe_float(safe_get(item, "shortLiquidation_usd"))
+                # Use correct field names from aggregated history API response
+                long_liq += safe_float(safe_get(item, "aggregated_long_liquidation_usd"))
+                short_liq += safe_float(safe_get(item, "aggregated_short_liquidation_usd"))
+                total_liq += long_liq + short_liq
         
         return {
             "total_24h": total_liq,

@@ -245,6 +245,24 @@ class CoinGlassAPI:
             logger.error(f"[COINGLASS] Failed endpoint /api/futures/liquidation/exchange-list reason: {e}")
             return {"success": False, "data": []}
 
+    async def get_liquidation_aggregated_history(self, symbol: str, exchanges: str = "Binance,OKX,Bybit", interval: str = "1d") -> Dict[str, Any]:
+        """Get liquidation aggregated history for better liquidation data"""
+        try:
+            params = {
+                "symbol": symbol,
+                "exchange_list": exchanges,
+                "interval": interval,
+                "limit": 100
+            }
+            result = await self._make_request("/api/futures/liquidation/aggregated-history", params)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/liquidation/aggregated-history reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/liquidation/aggregated-history reason: {e}")
+            return {"success": False, "data": []}
+
     async def get_whale_alert_hyperliquid(self) -> Dict[str, Any]:
         """Get whale alerts from Hyperliquid"""
         result = await self._make_request("/api/hyperliquid/whale-alert")
