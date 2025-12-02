@@ -293,7 +293,7 @@ class CoinGlassAPI:
     async def get_global_long_short_ratio(self, symbol: str, ex_name: str) -> Dict[str, Any]:
         """Get global long/short account ratio history"""
         return await self._make_request(
-            "/api/futures/global-long-short-account-ratio/history",
+            "/api/futures/global-longshort-account-ratio",
             {"symbol": symbol, "exName": ex_name},
         )
 
@@ -374,7 +374,7 @@ class CoinGlassAPI:
 
     async def get_open_interest_exchange_list(self, symbol: str) -> Dict[str, Any]:
         """Get open interest by exchange list"""
-        return await self._make_request("/api/futures/openInterest/exchange-list", {"symbol": symbol})
+        return await self._make_request("/api/futures/open-interest/exchange-list", {"symbol": symbol})
 
     async def get_open_interest_exchange_history_chart(
         self,
@@ -407,7 +407,7 @@ class CoinGlassAPI:
             params["startTime"] = start_time
         if end_time:
             params["endTime"] = end_time
-        return await self._make_request("/api/futures/fundingRate/ohlc-history", params)
+        return await self._make_request("/api/futures/funding-rate/ohlc-history", params)
 
     async def get_funding_rate_oi_weight_ohlc_history(
         self,
