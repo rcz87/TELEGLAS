@@ -246,6 +246,13 @@ async def main():
 
     # Add file logging if specified
     if settings.LOG_FILE:
+        # Ensure logs directory exists
+        import os
+        log_dir = os.path.dirname(settings.LOG_FILE)
+        if log_dir and not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+            logger.info(f"Created logs directory: {log_dir}")
+        
         logger.add(
             settings.LOG_FILE,
             rotation="10 MB",
