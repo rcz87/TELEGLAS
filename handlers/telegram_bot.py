@@ -636,7 +636,7 @@ class TelegramBot:
             from services.raw_data_service import raw_data_service
             from services.coinglass_api import SymbolNotSupported, RawDataUnavailable
             
-            # Get comprehensive market data using the existing service
+            # Get comprehensive market data using existing service
             comprehensive_data = await raw_data_service.get_comprehensive_market_data(args_raw)
             
             # Check if symbol is supported
@@ -649,8 +649,8 @@ class TelegramBot:
                 logger.info(f"[/raw] Symbol '{args_raw}' not supported by CoinGlass")
                 return
 
-            # Format the standardized message using the raw_data_service formatter
-            formatted_message = raw_data_service.format_for_telegram(comprehensive_data)
+            # Format to standardized layout
+            formatted_message = self._format_standardized_raw_output(comprehensive_data)
 
             # Send the comprehensive data
             await update.message.reply_text(
@@ -675,6 +675,202 @@ class TelegramBot:
                 f"Failed to fetch raw data for {args_raw}. Please try again later.",
                 parse_mode="Markdown",
             )
+
+    def _format_standardized_raw_output(self, data: Dict[str, Any]) -> str:
+        """Format comprehensive raw data according to the exact standardized layout"""
+        try:
+            from services.coinglass_api import safe_float, safe_int, safe_get, safe_list_get
+            
+            # Extract symbol and basic info
+            symbol = safe_get(data, 'symbol', 'UNKNOWN').upper()
+            timestamp = safe_get(data, 'timestamp', '')
+            
+            # Get general info
+            general = safe_get(data, 'general_info', {})
+            price_change = safe_get(data, 'price_change', {})
+            
+            # Extract basic price data
+            last_price = safe_float(safe_get(general, 'last_price'), 0.0)
+            mark_price = safe_float(safe_get(general, 'mark_price'), 0.0)
+            
+            # Price changes
+            change_1h = safe_float(safe_get(price_change, '1h'), 0.0)
+            change_4h = safe_float(safe_get(price_change, '4h'), 0.0) 
+            change_24h = safe_float(safe_get(price_change, '24h'), 0.0)
+            high_24h = safe_float(safe_get(price_change, 'high_24h'), 0.0)
+            low_24h = safe_float(safe_get(price_change, 'low_24h'), 0.0)
+            high_7d = safe_float(safe_get(price_change, 'high_7d'), 0.0)
+            low_7d = safe_float(safe_get(price_change, 'low_7d'), 0.0)
+            
+            # Open Interest data
+            oi = safe_get(data, 'open_interest', {})
+            total_oi = safe_float(safe_get(oi, 'total_oi'), 0.0)
+            oi_change_1h = safe_float(safe_get(oi, 'oi_1h'), 0.0)
+            oi_change_24h = safe_float(safe_get(oi, 'oi_24h'), 0.0)
+            oi_per_exchange = safe_get(oi, 'per_exchange', {})
+            oi_binance = safe_float(safe_get(oi_per_exchange, 'Binance'), 0.0)
+            oi_bybit = safe_float(safe_get(oi_per_exchange, 'Bybit'), 0.0)
+            oi_okx = safe_float(safe_get(oi_per_exchange, 'OKX'), 0.0)
+            oi_others = safe_float(safe_get(oi_per_exchange, 'Others'), 0.0)
+            
+            # Volume data
+            volume = safe_get(data, 'volume', {})
+            futures_24h = safe_float(safe_get(volume, 'futures_24h'), 0.0)
+            perp_24h = safe_float(safe_get(volume, 'perp_24h'), 0.0)
+            spot_24h = safe_float(safe_get(volume, 'spot_24h'), 0.0)
+            
+            # Funding data
+            funding = safe_get(data, 'funding', {})
+            current_funding = safe_float(safe_get(funding, 'current_funding'), 0.0)
+            next_funding = safe_get(funding, 'next_funding', 'N/A')
+            funding_history = safe_get(funding, 'funding_history', [])
+            
+            # Liquidation data
+            liquidations = safe_get(data, 'liquidations', {})
+            total_liq_24h = safe_float(safe_get(liquidations, 'total_24h'), 0.0)
+            long_liq_24h = safe_float(safe_get(liquidations, 'long_liq'), 0.0)
+            short_liq_24h = safe_float(safe_get(liquidations, 'short_liq'), 0.0)
+            
+            # Long/Short ratio data
+            ls_ratio = safe_get(data, 'long_short_ratio', {})
+            account_ratio_global = safe_float(safe_get(ls_ratio, 'account_ratio_global'), 1.0)
+            position_ratio_global = safe_float(safe_get(ls_ratio, 'position_ratio_global'), 1.0)
+            ls_by_exchange = safe_get(ls_ratio, 'by_exchange', {})
+            ls_binance = safe_float(safe_get(ls_by_exchange, 'Binance'), 1.0)
+            ls_bybit = safe_float(safe_get(ls_by_exchange, 'Bybit'), 1.0)
+            ls_okx = safe_float(safe_get(ls_by_exchange, 'OKX'), 1.0)
+            
+            # Taker Flow data
+            taker_flow = safe_get(data, 'taker_flow', {})
+            tf_5m = safe_get(taker_flow, '5m', {})
+            tf_15m = safe_get(taker_flow, '15m', {})
+            tf_1h = safe_get(taker_flow, '1h', {})
+            tf_4h = safe_get(taker_flow, '4h', {})
+            
+            buy_5m = safe_float(safe_get(tf_5m, 'buy'), 0.0)
+            sell_5m = safe_float(safe_get(tf_5m, 'sell'), 0.0)
+            net_5m = safe_float(safe_get(tf_5m, 'net'), 0.0)
+            
+            buy_15m = safe_float(safe_get(tf_15m, 'buy'), 0.0)
+            sell_15m = safe_float(safe_get(tf_15m, 'sell'), 0.0)
+            net_15m = safe_float(safe_get(tf_15m, 'net'), 0.0)
+            
+            buy_1h = safe_float(safe_get(tf_1h, 'buy'), 0.0)
+            sell_1h = safe_float(safe_get(tf_1h, 'sell'), 0.0)
+            net_1h = safe_float(safe_get(tf_1h, 'net'), 0.0)
+            
+            buy_4h = safe_float(safe_get(tf_4h, 'buy'), 0.0)
+            sell_4h = safe_float(safe_get(tf_4h, 'sell'), 0.0)
+            net_4h = safe_float(safe_get(tf_4h, 'net'), 0.0)
+            
+            # RSI data
+            rsi = safe_get(data, 'rsi', {})
+            rsi_5m = safe_float(safe_get(rsi, '5m'), 0.0)
+            rsi_15m = safe_float(safe_get(rsi, '15m'), 0.0)
+            rsi_1h = safe_float(safe_get(rsi, '1h'), 0.0)
+            rsi_4h = safe_float(safe_get(rsi, '4h'), 0.0)
+            
+            # CG Levels data
+            cg_levels = safe_get(data, 'cg_levels', {})
+            support_levels = safe_get(cg_levels, 'support', [0.0, 0.0, 0.0])
+            resistance_levels = safe_get(cg_levels, 'resistance', [0.0, 0.0, 0.0])
+            
+            # Format values with proper units
+            total_oi_billion = total_oi / 1e9 if total_oi > 0 else 0.0
+            oi_binance_billion = oi_binance / 1e9 if oi_binance > 0 else 0.0
+            oi_bybit_billion = oi_bybit / 1e9 if oi_bybit > 0 else 0.0
+            oi_okx_billion = oi_okx / 1e9 if oi_okx > 0 else 0.0
+            oi_others_billion = oi_others / 1e9 if oi_others > 0 else 0.0
+            
+            futures_volume_24h_billion = futures_24h / 1e9 if futures_24h > 0 else 0.0
+            perp_volume_24h_billion = perp_24h / 1e9 if perp_24h > 0 else 0.0
+            spot_volume_24h_billion = spot_24h / 1e9 if spot_24h > 0 else 0.0
+            
+            total_liq_24h_million = total_liq_24h / 1e6 if total_liq_24h > 0 else 0.0
+            long_liq_24h_million = long_liq_24h / 1e6 if long_liq_24h > 0 else 0.0
+            short_liq_24h_million = short_liq_24h / 1e6 if short_liq_24h > 0 else 0.0
+            
+            # Format support/resistance levels
+            support_str = ', '.join([f'${x:.2f}' for x in support_levels[:3]])
+            resistance_str = ', '.join([f'${x:.2f}' for x in resistance_levels[:3]])
+            
+            # Format funding history
+            funding_history_text = 'No history available' if not funding_history else f'{len(funding_history)} entries'
+            
+            # Build the exact standardized message
+            message = f"""[RAW DATA - {symbol} - REAL PRICE MULTI-TF]
+
+Info Umum
+Symbol : {symbol}
+Timeframe : 1H
+Timestamp : {timestamp}
+Last Price: {last_price:.4f}
+Mark Price: {mark_price:.4f}
+Price Source: coinglass_futures
+
+Price Change
+1H : {change_1h:+.2f}%
+4H : {change_4h:+.2f}%
+24H : {change_24h:+.2f}%
+High/Low 24H: ${low_24h:.4f} / ${high_24h:.4f}
+High/Low 7D : ${low_7d:.4f} / ${high_7d:.4f}
+
+Open Interest
+Total OI : ${total_oi_billion:.2f}B
+OI 1H : {oi_change_1h:+.1f}%
+OI 24H : {oi_change_24h:+.1f}%
+
+OI per Exchange
+Binance : ${oi_binance_billion:.2f}B
+Bybit : ${oi_bybit_billion:.2f}B
+OKX : ${oi_okx_billion:.2f}B
+Others : ${oi_others_billion:.2f}B
+
+Volume
+Futures 24H: ${futures_volume_24h_billion:.2f}B
+Perp 24H : ${perp_volume_24h_billion:.2f}B
+Spot 24H : ${spot_volume_24h_billion:.2f}B
+
+Funding
+Current Funding: {current_funding:+.4f}%
+Next Funding : {next_funding}
+Funding History:
+{funding_history_text}
+
+Liquidations
+Total 24H : ${total_liq_24h_million:.2f}M
+Long Liq : ${long_liq_24h_million:.2f}M
+Short Liq : ${short_liq_24h_million:.2f}M
+
+Long/Short Ratio
+Account Ratio (Global) : {account_ratio_global:.2f}
+Position Ratio (Global): {position_ratio_global:.2f}
+By Exchange:
+Binance: {ls_binance:.2f}
+Bybit : {ls_bybit:.2f}
+OKX : {ls_okx:.2f}
+
+Taker Flow Multi-Timeframe (CVD Proxy)
+5M: Buy ${buy_5m:.0f}M | Sell ${sell_5m:.0f}M | Net ${net_5m:+.0f}M
+15M: Buy ${buy_15m:.0f}M | Sell ${sell_15m:.0f}M | Net ${net_15m:+.0f}M
+1H: Buy ${buy_1h:.0f}M | Sell ${sell_1h:.0f}M | Net ${net_1h:+.0f}M
+4H: Buy ${buy_4h:.0f}M | Sell ${sell_4h:.0f}M | Net ${net_4h:+.0f}M
+
+RSI Multi-Timeframe (14)
+5M : {rsi_5m:.2f}
+15M: {rsi_15m:.2f}
+1H : {rsi_1h:.2f}
+4H : {rsi_4h:.2f}
+
+CG Levels
+Support : {support_str}
+Resistance: {resistance_str}"""
+            
+            return message
+            
+        except Exception as e:
+            logger.error(f"[RAW_DATA] Error formatting standardized data: {e}")
+            return f"❌ Error formatting standardized market data for {safe_get(data, 'symbol', 'UNKNOWN')}"
 
     def _format_single_symbol_raw_data(self, data: Dict[str, Any]) -> str:
         """Format single symbol raw data for Telegram display"""
