@@ -242,11 +242,12 @@ class CoinGlassAPI:
         params = {}
         if symbol:
             params["symbol"] = symbol
-        result = await self._make_request("/api/futures/fundingRate/exchange-list", params)
+        # Try correct v4 endpoint first
+        result = await self._make_request("/api/v4/funding_rate/exchange_list", params)
         # Fallback to alternative endpoint if primary fails
         if not result.get("success"):
             logger.warning("Primary funding rate endpoint failed, trying alternative")
-            result = await self._make_request("/api/futures/fundingRate/accumulated-exchange-list", params)
+            result = await self._make_request("/api/v4/funding_rate/accumulated_exchange_list", params)
         return result
 
     async def get_liquidation_orders(
@@ -424,7 +425,7 @@ class CoinGlassAPI:
         params = {}
         if symbol:
             params["symbol"] = symbol
-        return await self._make_request("/api/futures/fundingRate/accumulated-exchange-list", params)
+        return await self._make_request("/api/v4/funding_rate/accumulated_exchange_list", params)
 
     async def get_funding_rate_arbitrage(self) -> Dict[str, Any]:
         """Get funding arbitrage opportunities"""
