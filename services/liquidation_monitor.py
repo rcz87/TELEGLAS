@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from loguru import logger
-from services.coinglass import CoinGlassAPI
+from services.coinglass import CoinGlassAPI, safe_float, safe_int, safe_get, safe_list_get
 from core.database import db_manager
 from config.settings import settings
 
@@ -34,7 +34,7 @@ class LiquidationSignal:
 
 
 class LiquidationMonitor:
-    """Monitors liquidation data and generates trading signals"""
+    """Monitors liquidation data with comprehensive error handling and zero-crash stability"""
 
     def __init__(self):
         self.api = CoinGlassAPI()
@@ -64,9 +64,15 @@ class LiquidationMonitor:
                 all_data = {}
                 
                 for exchange in exchanges:
-                    data = await api.get_liquidation_coin_list(ex_name=exchange)
-                    if data:
-                        all_data[exchange] = data
+                    try:
+                        data = await api.get_liquidation_coin_list(ex_name=exchange)
+                        if data and data.get("success", False):
+                            all_data[exchange] = data
+                        else:
+                            logger.warning(f"Failed to get liquidation data from {exchange}: {data.get('error', 'Unknown error') if data else 'No data'}")
+                    except Exception as e:
+                        logger.error(f"Error fetching liquidation data from {exchange}: {e}")
+                        continue
 
                 # Process data from all exchanges
                 for exchange, data in all_data.items():
@@ -75,85 +81,157 @@ class LiquidationMonitor:
         except Exception as e:
             logger.error(f"Error checking liquidations: {e}")
 
-    async def _process_liquidation_data(self, data: List[Dict[str, Any]], exchange: str):
+    async def _process_liquidation_data(self, data: Dict[str, Any], exchange: str):
         """Process liquidation data and identify significant events"""
-        current_time = datetime.utcnow()
+        try:
+            # Handle different response formats
+            raw_data = data.get("data", [])
+            
+            # Handle case where data is not a list
+            if isinstance(raw_data, dict):
+                raw_data = [raw_data]  # Convert single dict to list
+            elif not isinstance(raw_data, list):
+                logger.warning(f"Unexpected liquidation data format from {exchange}: {type(raw_data)}")
+                return
 
-        for item in data:
-            try:
-                symbol = item.get("symbol", "").upper()
-                liquidation_usd_24h = float(item.get("liquidation_usd_24h", 0))
-                long_liq_24h = float(item.get("long_liquidation_usd_24h", 0))
-                short_liq_24h = float(item.get("short_liquidation_usd_24h", 0))
+            if not raw_data:
+                logger.debug(f"No liquidation data from {exchange}")
+                return
 
-                if not symbol or liquidation_usd_24h == 0:
+            current_time = datetime.utcnow()
+            processed_count = 0
+
+            for i, item in enumerate(raw_data):
+                try:
+                    # Skip non-dict items
+                    if not isinstance(item, dict):
+                        logger.debug(f"Skipping non-dict liquidation item at index {i} from {exchange}")
+                        continue
+
+                    # Extract liquidation data safely
+                    symbol = str(safe_get(item, "symbol", "")).upper().strip()
+                    liquidation_usd_24h = safe_float(safe_get(item, "liquidation_usd_24h"), 0.0)
+                    long_liq_24h = safe_float(safe_get(item, "long_liquidation_usd_24h"), 0.0)
+                    short_liq_24h = safe_float(safe_get(item, "short_liquidation_usd_24h"), 0.0)
+
+                    # Validate required fields
+                    if not symbol:
+                        logger.debug(f"Missing symbol in liquidation item at index {i} from {exchange}")
+                        continue
+
+                    # Validate liquidation amounts are reasonable
+                    if liquidation_usd_24h < 0:
+                        logger.debug(f"Negative liquidation amount for {symbol}: {liquidation_usd_24h}")
+                        continue
+
+                    if liquidation_usd_24h > 1_000_000_000:  # $1B is unrealistic
+                        logger.debug(f"Unrealistic liquidation amount for {symbol}: {liquidation_usd_24h}")
+                        continue
+
+                    # Ensure consistency: total should equal sum of long + short
+                    total_calculated = long_liq_24h + short_liq_24h
+                    if abs(total_calculated - liquidation_usd_24h) > liquidation_usd_24h * 0.1:  # 10% tolerance
+                        # Use calculated total if more reliable
+                        liquidation_usd_24h = total_calculated
+
+                    # Skip zero liquidations
+                    if liquidation_usd_24h == 0:
+                        continue
+
+                    # Determine liquidation side based on which type dominates
+                    side = "long" if long_liq_24h > short_liq_24h else "short"
+
+                    # Create liquidation event
+                    event = LiquidationEvent(
+                        symbol=symbol,
+                        liquidation_usd=liquidation_usd_24h,
+                        side=side,
+                        timestamp=current_time,
+                        exchange=exchange,
+                    )
+
+                    # Add to history
+                    if symbol not in self.liquidation_history:
+                        self.liquidation_history[symbol] = []
+
+                    self.liquidation_history[symbol].append(event)
+
+                    # Keep only last 24 hours of data
+                    cutoff_time = current_time - timedelta(hours=24)
+                    self.liquidation_history[symbol] = [
+                        e for e in self.liquidation_history[symbol] if e.timestamp > cutoff_time
+                    ]
+
+                    processed_count += 1
+
+                    # Check for massive liquidations immediately for time-sensitive alerts
+                    if liquidation_usd_24h >= self.threshold_usd:
+                        await self._check_immediate_liquidations(symbol, exchange)
+
+                except Exception as e:
+                    logger.warning(f"Error processing liquidation item at index {i} from {exchange}: {e}")
                     continue
 
-                # Determine liquidation side based on which type dominates
-                side = "long" if long_liq_24h > short_liq_24h else "short"
+            if processed_count > 0:
+                logger.debug(f"Processed {processed_count} liquidation events from {exchange}")
 
-                # Create liquidation event
-                event = LiquidationEvent(
-                    symbol=symbol,
-                    liquidation_usd=liquidation_usd_24h,
-                    side=side,
-                    timestamp=current_time,
-                    exchange=exchange,
-                )
+        except Exception as e:
+            logger.error(f"Error processing liquidation data from {exchange}: {e}")
 
-                # Add to history
-                if symbol not in self.liquidation_history:
-                    self.liquidation_history[symbol] = []
+    async def _check_immediate_liquidations(self, symbol: str, exchange: str):
+        """Check for immediate massive liquidations (time-sensitive)"""
+        try:
+            if symbol not in self.liquidation_history:
+                return
 
-                self.liquidation_history[symbol].append(event)
+            recent_liquidations = self.liquidation_history[symbol]
+            if not recent_liquidations:
+                return
 
-                # Keep only last 24 hours of data
-                cutoff_time = current_time - timedelta(hours=24)
-                self.liquidation_history[symbol] = [
-                    e
-                    for e in self.liquidation_history[symbol]
-                    if e.timestamp > cutoff_time
-                ]
+            # Look at last 15 minutes for immediate alerts
+            current_time = datetime.utcnow()
+            min_ago = current_time - timedelta(minutes=15)
+            last_15min_liqs = [l for l in recent_liquidations if l.timestamp > min_ago]
 
-                # Check for massive liquidations
-                await self._check_massive_liquidations(symbol)
+            if len(last_15min_liqs) > 0:
+                signal = await self._analyze_liquidation_pattern(last_15min_liqs, "15m")
+                if signal:
+                    await self._handle_liquidation_signal(signal)
 
-            except (ValueError, KeyError) as e:
-                logger.warning(f"Error processing liquidation item: {e}")
-                continue
+        except Exception as e:
+            logger.error(f"Error checking immediate liquidations for {symbol}: {e}")
 
     async def _check_massive_liquidations(self, symbol: str):
         """Check if liquidations exceed threshold and generate signals"""
-        if symbol not in self.liquidation_history:
-            return
+        try:
+            if symbol not in self.liquidation_history:
+                return
 
-        recent_liquidations = self.liquidation_history[symbol]
-        if not recent_liquidations:
-            return
+            recent_liquidations = self.liquidation_history[symbol]
+            if not recent_liquidations:
+                return
 
-        # Calculate totals for different time windows
-        current_time = datetime.utcnow()
+            # Calculate totals for different time windows
+            current_time = datetime.utcnow()
 
-        # Last 1 hour
-        hour_ago = current_time - timedelta(hours=1)
-        last_hour_liqs = [l for l in recent_liquidations if l.timestamp > hour_ago]
+            # Last 1 hour
+            hour_ago = current_time - timedelta(hours=1)
+            last_hour_liqs = [l for l in recent_liquidations if l.timestamp > hour_ago]
 
-        # Last 15 minutes (for immediate signals)
-        min_ago = current_time - timedelta(minutes=15)
-        last_15min_liqs = [l for l in recent_liquidations if l.timestamp > min_ago]
+            # Check thresholds
+            for time_window, liquidations in [
+                ("1h", last_hour_liqs),
+            ]:
+                if not liquidations:
+                    continue
 
-        # Check thresholds
-        for time_window, liquidations in [
-            ("1h", last_hour_liqs),
-            ("15m", last_15min_liqs),
-        ]:
-            if not liquidations:
-                continue
+                signal = await self._analyze_liquidation_pattern(liquidations, time_window)
 
-            signal = await self._analyze_liquidation_pattern(liquidations, time_window)
+                if signal:
+                    await self._handle_liquidation_signal(signal)
 
-            if signal:
-                await self._handle_liquidation_signal(signal)
+        except Exception as e:
+            logger.error(f"Error checking massive liquidations for {symbol}: {e}")
 
     async def _analyze_liquidation_pattern(
         self, liquidations: List[LiquidationEvent], time_window: str
@@ -162,92 +240,124 @@ class LiquidationMonitor:
         if not liquidations:
             return None
 
-        # Calculate totals
-        total_liq = sum(l.liquidation_usd for l in liquidations)
-        long_liq = sum(l.liquidation_usd for l in liquidations if l.side == "long")
-        short_liq = sum(l.liquidation_usd for l in liquidations if l.side == "short")
+        try:
+            # Calculate totals
+            total_liq = sum(l.liquidation_usd for l in liquidations)
+            long_liq = sum(l.liquidation_usd for l in liquidations if l.side == "long")
+            short_liq = sum(l.liquidation_usd for l in liquidations if l.side == "short")
 
-        # Check if total liquidation exceeds threshold
-        threshold_multiplier = 0.5 if time_window == "15m" else 1.0
-        effective_threshold = self.threshold_usd * threshold_multiplier
+            # Check if total liquidation exceeds threshold
+            threshold_multiplier = 0.5 if time_window == "15m" else 1.0
+            effective_threshold = self.threshold_usd * threshold_multiplier
 
-        if total_liq < effective_threshold:
-            return None
+            if total_liq < effective_threshold:
+                return None
 
-        # Calculate long/short ratio
-        long_short_ratio = long_liq / short_liq if short_liq > 0 else float("inf")
+            # Calculate long/short ratio safely
+            long_short_ratio = 1.0  # Default neutral ratio
+            if short_liq > 0:
+                long_short_ratio = long_liq / short_liq
+            elif long_liq > 0:
+                long_short_ratio = float('inf')  # All longs
 
-        # Determine signal type and confidence
-        signal_type = None
-        confidence_score = 0.0
+            # Determine signal type and confidence
+            signal_type = None
+            confidence_score = 0.0
 
-        if long_short_ratio > 2.0:  # Much more long liquidations
-            signal_type = "dump"
-            confidence_score = min(0.9, long_short_ratio / 5.0)
-        elif long_short_ratio < 0.5:  # Much more short liquidations
-            signal_type = "pump"
-            confidence_score = min(0.9, (1 / long_short_ratio) / 5.0)
-        elif time_window == "15m" and total_liq > effective_threshold * 2:
-            # Extreme liquidation in short time window
-            signal_type = "dump" if long_liq > short_liq else "pump"
-            confidence_score = min(0.8, total_liq / (effective_threshold * 3))
+            if long_short_ratio > 2.0:  # Much more long liquidations
+                signal_type = "dump"
+                confidence_score = min(0.9, long_short_ratio / 5.0)
+            elif long_short_ratio < 0.5:  # Much more short liquidations
+                signal_type = "pump"
+                confidence_score = min(0.9, (1 / max(0.1, long_short_ratio)) / 5.0)
+            elif time_window == "15m" and total_liq > effective_threshold * 2:
+                # Extreme liquidation in short time window
+                signal_type = "dump" if long_liq > short_liq else "pump"
+                confidence_score = min(0.8, total_liq / (effective_threshold * 3))
 
-        if signal_type and confidence_score > 0.3:
-            symbol = liquidations[0].symbol
+            # Additional confidence based on total volume
+            volume_confidence = min(0.3, total_liq / (self.threshold_usd * 2))
+            final_confidence = min(0.9, confidence_score + volume_confidence)
 
-            return LiquidationSignal(
-                signal_type=signal_type,
-                symbol=symbol,
-                total_liquidation_usd=total_liq,
-                long_liquidation_usd=long_liq,
-                short_liquidation_usd=short_liq,
-                long_short_ratio=long_short_ratio,
-                timestamp=datetime.utcnow(),
-                confidence_score=confidence_score,
-            )
+            if signal_type and final_confidence > 0.3:
+                symbol = liquidations[0].symbol
+
+                return LiquidationSignal(
+                    signal_type=signal_type,
+                    symbol=symbol,
+                    total_liquidation_usd=total_liq,
+                    long_liquidation_usd=long_liq,
+                    short_liquidation_usd=short_liq,
+                    long_short_ratio=long_short_ratio,
+                    timestamp=datetime.utcnow(),
+                    confidence_score=final_confidence,
+                )
+
+        except Exception as e:
+            logger.error(f"Error analyzing liquidation pattern: {e}")
 
         return None
 
     async def _handle_liquidation_signal(self, signal: LiquidationSignal):
         """Handle generated liquidation signal"""
-        logger.info(
-            f"🚨 LIQUIDATION SIGNAL: {signal.signal_type.upper()} {signal.symbol} "
-            f"(${signal.total_liquidation_usd:,.0f}, confidence: {signal.confidence_score:.2f})"
-        )
+        try:
+            emoji = "🔴" if signal.signal_type == "dump" else "🟢"
+            direction = "DUMP" if signal.signal_type == "dump" else "PUMP"
 
-        # Add system alert for broadcasting
-        message = self._format_signal_message(signal)
-        await db_manager.add_system_alert(
-            alert_type="liquidation",
-            message=message,
-            data={
-                "signal_type": signal.signal_type,
-                "symbol": signal.symbol,
-                "total_liquidation_usd": signal.total_liquidation_usd,
-                "confidence_score": signal.confidence_score,
-                "long_short_ratio": signal.long_short_ratio,
-            },
-        )
+            logger.info(
+                f"🚨 LIQUIDATION SIGNAL: {direction} {signal.symbol} "
+                f"(${signal.total_liquidation_usd:,.0f}, confidence: {signal.confidence_score:.2f})"
+            )
 
-        # Notify subscribed users
-        await self._notify_subscribers(signal)
+            # Add system alert for broadcasting
+            message = self._format_signal_message(signal)
+            await db_manager.add_system_alert(
+                alert_type="liquidation",
+                message=message,
+                data={
+                    "signal_type": signal.signal_type,
+                    "symbol": signal.symbol,
+                    "total_liquidation_usd": signal.total_liquidation_usd,
+                    "confidence_score": signal.confidence_score,
+                    "long_short_ratio": signal.long_short_ratio,
+                },
+            )
+
+            # Notify subscribed users
+            await self._notify_subscribers(signal)
+
+        except Exception as e:
+            logger.error(f"Error handling liquidation signal: {e}")
 
     def _format_signal_message(self, signal: LiquidationSignal) -> str:
         """Format liquidation signal as readable message"""
-        emoji = "🔴" if signal.signal_type == "dump" else "🟢"
-        direction = "DUMP" if signal.signal_type == "dump" else "PUMP"
+        try:
+            emoji = "🔴" if signal.signal_type == "dump" else "🟢"
+            direction = "DUMP" if signal.signal_type == "dump" else "PUMP"
 
-        message = (
-            f"{emoji} {direction} ALERT {signal.symbol}\n"
-            f"💰 Total Liquidations: ${signal.total_liquidation_usd:,.0f}\n"
-            f"📉 Long Liquidations: ${signal.long_liquidation_usd:,.0f}\n"
-            f"📈 Short Liquidations: ${signal.short_liquidation_usd:,.0f}\n"
-            f"⚖️ L/S Ratio: {signal.long_short_ratio:.2f}\n"
-            f"🎯 Confidence: {signal.confidence_score:.0%}\n"
-            f"🕐 Time: {signal.timestamp.strftime('%H:%M:%S UTC')}"
-        )
+            # Format long/short ratio safely
+            if signal.long_short_ratio == float('inf'):
+                ratio_text = "∞ (All Longs)"
+            elif signal.long_short_ratio == 0:
+                ratio_text = "0 (All Shorts)"
+            else:
+                ratio_text = f"{signal.long_short_ratio:.2f}"
 
-        return message
+            message = (
+                f"{emoji} {direction} ALERT {signal.symbol}\n"
+                f"💰 Total Liquidations: ${signal.total_liquidation_usd:,.0f}\n"
+                f"📉 Long Liquidations: ${signal.long_liquidation_usd:,.0f}\n"
+                f"📈 Short Liquidations: ${signal.short_liquidation_usd:,.0f}\n"
+                f"⚖️ L/S Ratio: {ratio_text}\n"
+                f"🎯 Confidence: {signal.confidence_score:.0%}\n"
+                f"🕐 Time: {signal.timestamp.strftime('%H:%M:%S UTC')}"
+            )
+
+            return message
+
+        except Exception as e:
+            logger.error(f"Error formatting liquidation signal message: {e}")
+            return f"Liquidation Signal for {signal.symbol}"
 
     async def _notify_subscribers(self, signal: LiquidationSignal):
         """Notify users subscribed to symbol"""
@@ -259,7 +369,8 @@ class LiquidationMonitor:
             for subscription in subscribers:
                 # Check if liquidation meets user's threshold
                 if (
-                    subscription.threshold_usd
+                    hasattr(subscription, 'threshold_usd')
+                    and subscription.threshold_usd
                     and signal.total_liquidation_usd < subscription.threshold_usd
                 ):
                     continue
@@ -281,29 +392,49 @@ class LiquidationMonitor:
                 # Get liquidation data across all exchanges for this symbol
                 data = await api.get_liquidation_exchange_list(symbol)
 
-                if not data:
+                if not data or not data.get("success", False):
+                    logger.warning(f"Failed to get liquidation summary for {symbol}: {data.get('error') if data else 'No data'}")
+                    return None
+
+                # Handle different response formats
+                raw_data = data.get("data", [])
+                if isinstance(raw_data, dict):
+                    raw_data = [raw_data]
+                elif not isinstance(raw_data, list):
+                    logger.warning(f"Unexpected liquidation summary format for {symbol}: {type(raw_data)}")
+                    return None
+
+                if not raw_data:
                     return None
 
                 # Aggregate data from all exchanges
-                total_liquidation_usd = 0
-                total_long_liquidation = 0
-                total_short_liquidation = 0
+                total_liquidation_usd = 0.0
+                total_long_liquidation = 0.0
+                total_short_liquidation = 0.0
+                exchange_count = 0
 
-                for item in data:
-                    total_liquidation_usd += float(item.get("liquidation_usd_24h", 0))
-                    total_long_liquidation += float(item.get("long_liquidation_usd_24h", 0))
-                    total_short_liquidation += float(item.get("short_liquidation_usd_24h", 0))
+                for item in raw_data:
+                    if not isinstance(item, dict):
+                        continue
+
+                    total_liquidation_usd += safe_float(safe_get(item, "liquidation_usd_24h"), 0.0)
+                    total_long_liquidation += safe_float(safe_get(item, "long_liquidation_usd_24h"), 0.0)
+                    total_short_liquidation += safe_float(safe_get(item, "short_liquidation_usd_24h"), 0.0)
+                    exchange_count += 1
 
                 return {
                     "symbol": symbol,
                     "liquidation_usd": total_liquidation_usd,
+                    "long_liquidation_usd": total_long_liquidation,
+                    "short_liquidation_usd": total_short_liquidation,
+                    "exchange_count": exchange_count,
                     "price_change": 0.0,  # Not available in this endpoint
                     "volume_24h": 0.0,  # Not available in this endpoint
                     "last_update": datetime.utcnow().isoformat(),
                 }
 
         except Exception as e:
-            logger.error(f"Error getting symbol liquidation summary: {e}")
+            logger.error(f"Error getting symbol liquidation summary for {symbol}: {e}")
             return None
 
 
