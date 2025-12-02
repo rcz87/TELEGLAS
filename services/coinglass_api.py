@@ -275,9 +275,18 @@ class CoinGlassAPI:
             logger.error(f"[COINGLASS] Failed endpoint /api/hyperliquid/whale-alert reason: {e}")
             return {"success": False, "data": []}
 
-    async def get_whale_position_hyperliquid(self) -> Dict[str, Any]:
+    async def get_whale_position_hyperliquid(self, symbol: str = "BTC") -> Dict[str, Any]:
         """Get whale positions from Hyperliquid"""
-        return await self._make_request("/api/hyperliquid/whale-position")
+        try:
+            params = {"symbol": symbol}
+            result = await self._make_request("/api/hyperliquid/whale-position", params)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/hyperliquid/whale-position reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/hyperliquid/whale-position reason: {e}")
+            return {"success": False, "data": []}
 
     async def get_funding_rate_exchange_list(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         """Get funding rates across exchanges"""
