@@ -178,14 +178,46 @@ class RawDataService:
             return {}
     
     async def get_rsi_multi_tf(self, symbol: str) -> Dict[str, Any]:
-        """Get RSI data for multiple timeframes"""
+        """Get RSI data for multiple timeframes using the new indicators endpoint"""
         try:
-            # RSI endpoint may not be available - return empty
-            logger.warning(f"[RAW] RSI multi-timeframe data not available for {symbol}")
-            return {}
+            # Fetch RSI data for all required timeframes concurrently
+            tasks = [
+                self.api.get_rsi_indicators(symbol, "Binance", "5m", 100, window=14),
+                self.api.get_rsi_indicators(symbol, "Binance", "15m", 100, window=14),
+                self.api.get_rsi_indicators(symbol, "Binance", "1h", 100, window=14),
+                self.api.get_rsi_indicators(symbol, "Binance", "4h", 100, window=14)
+            ]
+            
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Process results for each timeframe
+            rsi_data = {}
+            timeframes = ["5m", "15m", "1h", "4h"]
+            
+            for i, tf in enumerate(timeframes):
+                result = results[i] if not isinstance(results[i], Exception) else {}
+                if result and result.get("success"):
+                    data = safe_get(result, "data", [])
+                    if data and isinstance(data, list) and len(data) > 0:
+                        # Get the most recent RSI value
+                        latest = data[-1]
+                        if isinstance(latest, dict):
+                            rsi_value = safe_float(safe_get(latest, "rsi"))
+                            rsi_data[tf] = rsi_value
+                            logger.info(f"[RAW] RSI {tf} for {symbol}: {rsi_value:.2f}")
+                        else:
+                            rsi_data[tf] = 0.0
+                    else:
+                        rsi_data[tf] = 0.0
+                else:
+                    rsi_data[tf] = 0.0
+            
+            return rsi_data
+            
         except Exception as e:
             logger.error(f"[RAW] Error in get_rsi_multi_tf for {symbol}: {e}")
-            return {}
+            # Return empty data on error
+            return {"5m": 0.0, "15m": 0.0, "1h": 0.0, "4h": 0.0}
     
     async def get_support_resistance(self, symbol: str) -> Dict[str, Any]:
         """Get support and resistance levels"""
