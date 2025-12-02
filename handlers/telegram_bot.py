@@ -73,15 +73,28 @@ class TelegramBot:
         )
 
     def _is_whitelisted(self, user_id: int) -> bool:
-        """Check if user is whitelisted"""
-        return not self.whitelisted_users or user_id in self.whitelisted_users
+        """Check if user is whitelisted - admin always has access"""
+        # Admin always has access
+        if user_id == self.admin_chat_id:
+            return True
+        
+        # If whitelist is empty, deny access (security)
+        if not self.whitelisted_users:
+            return False
+            
+        # Check if user is in whitelist
+        return user_id in self.whitelisted_users
 
     async def handle_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command"""
         user_id = update.effective_user.id
         username = update.effective_user.username or update.effective_user.first_name
 
+        # Log incoming update
+        logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /start command")
+
         if not self._is_whitelisted(user_id):
+            logger.warning(f"[TELEGRAM] User {user_id} (@{username}) denied access - not whitelisted")
             await update.message.reply_text(
                 "🚫 *Access Denied*\n\n"
                 "This is a private bot. You need to be whitelisted to use it.\n"
@@ -113,6 +126,22 @@ class TelegramBot:
 
     async def handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help command"""
+        user_id = update.effective_user.id
+        username = update.effective_user.username or update.effective_user.first_name
+        
+        # Log incoming update
+        logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /help command")
+
+        if not self._is_whitelisted(user_id):
+            logger.warning(f"[TELEGRAM] User {user_id} (@{username}) denied access to /help - not whitelisted")
+            await update.message.reply_text(
+                "🚫 *Access Denied*\n\n"
+                "This is a private bot. You need to be whitelisted to use it.\n"
+                "Please contact the administrator for access.",
+                parse_mode="Markdown",
+            )
+            return
+
         help_message = (
             "📖 *CryptoSat Bot Help*\n\n"
             "🎯 *Commands:*\n\n"
@@ -148,7 +177,15 @@ class TelegramBot:
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ):
         """Handle /liq command"""
-        if not self._is_whitelisted(update.effective_user.id):
+        user_id = update.effective_user.id
+        username = update.effective_user.username or update.effective_user.first_name
+        
+        # Log incoming update
+        symbol = context.args[0].upper() if context.args else None
+        logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /liq command for {symbol or 'no symbol'}")
+
+        if not self._is_whitelisted(user_id):
+            logger.warning(f"[TELEGRAM] User {user_id} (@{username}) denied access to /liq - not whitelisted")
             return
 
         # Extract symbol from command
@@ -197,7 +234,14 @@ class TelegramBot:
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ):
         """Handle /sentiment command"""
-        if not self._is_whitelisted(update.effective_user.id):
+        user_id = update.effective_user.id
+        username = update.effective_user.username or update.effective_user.first_name
+        
+        # Log incoming update
+        logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /sentiment command")
+
+        if not self._is_whitelisted(user_id):
+            logger.warning(f"[TELEGRAM] User {user_id} (@{username}) denied access to /sentiment - not whitelisted")
             return
 
         # Get Fear & Greed Index
@@ -243,7 +287,14 @@ class TelegramBot:
 
     async def handle_whale(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /whale command"""
-        if not self._is_whitelisted(update.effective_user.id):
+        user_id = update.effective_user.id
+        username = update.effective_user.username or update.effective_user.first_name
+        
+        # Log incoming update
+        logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /whale command")
+
+        if not self._is_whitelisted(user_id):
+            logger.warning(f"[TELEGRAM] User {user_id} (@{username}) denied access to /whale - not whitelisted")
             return
 
         # Get recent whale activity
@@ -578,18 +629,27 @@ class TelegramBot:
             logger.error(f"Failed to broadcast alert: {e}")
 
     async def start(self):
-        """Start the bot"""
+        """Start the bot with polling"""
         if not self.application:
             raise RuntimeError("Bot not initialized. Call initialize() first.")
 
         logger.info("Starting CryptoSat Telegram bot...")
         await self.application.initialize()
         await self.application.start()
-        logger.info("CryptoSat bot started successfully")
+        
+        # Start polling - this is the missing piece!
+        await self.application.updater.start_polling(drop_pending_updates=True)
+        
+        logger.info("CryptoSat bot started successfully with polling enabled")
 
     async def stop(self):
         """Stop the bot"""
         if self.application:
+            # Stop polling first
+            if hasattr(self.application, 'updater') and self.application.updater:
+                await self.application.updater.stop()
+            
+            # Stop the application
             await self.application.stop()
             logger.info("CryptoSat bot stopped")
 
