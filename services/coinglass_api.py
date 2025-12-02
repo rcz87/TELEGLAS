@@ -265,14 +265,14 @@ class CoinGlassAPI:
             if symbol:
                 params["symbol"] = symbol
             
-            # Use only allowed endpoint from truth table
-            result = await self._make_request("/api/futures/fundingRate/current", params)
+            # Use the correct endpoint from CoinGlass API v4 documentation
+            result = await self._make_request("/api/futures/funding-rate/exchange-list", params)
             if not result.get("success"):
-                logger.error(f"[COINGLASS] Failed endpoint /api/futures/fundingRate/current reason: {result.get('error')}")
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/funding-rate/exchange-list reason: {result.get('error')}")
                 return {"success": False, "data": []}
             return result
         except Exception as e:
-            logger.error(f"[COINGLASS] Failed endpoint /api/futures/fundingRate/current reason: {e}")
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/funding-rate/exchange-list reason: {e}")
             return {"success": False, "data": []}
 
     async def get_liquidation_orders(
@@ -417,12 +417,12 @@ class CoinGlassAPI:
     ) -> Dict[str, Any]:
         """Get funding rate OHLC history"""
         try:
-            params = {"symbol": symbol, "interval": interval}
+            params = {"symbol": symbol, "interval": interval, "exchange": "Binance"}
             if start_time:
                 params["startTime"] = start_time
             if end_time:
                 params["endTime"] = end_time
-            result = await self._make_request("/api/futures/fundingRate/history", params)
+            result = await self._make_request("/api/futures/funding-rate/history", params)
             if not result.get("success"):
                 logger.error(f"[COINGLASS] Failed endpoint /api/futures/fundingRate/history reason: {result.get('error')}")
                 return {"success": False, "data": []}
@@ -488,7 +488,7 @@ class CoinGlassAPI:
             params = {"symbol": symbol, "range": "24h"}
             if ex_name:
                 params["exName"] = ex_name
-            result = await self._make_request("/api/futures/orderbook/aggregation", params)
+            result = await self._make_request("/api/futures/taker-buy-sell-volume/exchange-list", params)
             if not result.get("success"):
                 logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/aggregation reason: {result.get('error')}")
                 return {"success": False, "data": []}
