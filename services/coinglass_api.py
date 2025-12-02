@@ -309,22 +309,46 @@ class CoinGlassAPI:
         self, symbol: Optional[str] = None, ex_name: Optional[str] = None
     ) -> Dict[str, Any]:
         """Get liquidation order data from past 7 days"""
-        params = {}
-        if symbol:
-            params["symbol"] = symbol
-        if ex_name:
-            params["exName"] = ex_name
-        return await self._make_request("/api/futures/liquidation/order", params)
+        try:
+            params = {}
+            if symbol:
+                params["symbol"] = symbol
+            if ex_name:
+                params["exName"] = ex_name
+            result = await self._make_request("/api/futures/liquidation/order", params)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/liquidation/order reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/liquidation/order reason: {e}")
+            return {"success": False, "data": []}
 
     # Medium Priority Endpoints (Market Sentiment)
 
     async def get_fear_greed_history(self) -> Dict[str, Any]:
         """Get Fear & Greed Index history"""
-        return await self._make_request("/api/index/fear-greed-history")
+        try:
+            result = await self._make_request("/api/index/fear-greed-history")
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/index/fear-greed-history reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/index/fear-greed-history reason: {e}")
+            return {"success": False, "data": []}
 
     async def get_bitcoin_etf_flow_history(self) -> Dict[str, Any]:
         """Get Bitcoin ETF flow history"""
-        return await self._make_request("/api/etf/bitcoin/flow-history")
+        try:
+            result = await self._make_request("/api/etf/bitcoin/flow-history")
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/etf/bitcoin/flow-history reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/etf/bitcoin/flow-history reason: {e}")
+            return {"success": False, "data": []}
 
     async def get_global_long_short_ratio(self, symbol: str, ex_name: str) -> Dict[str, Any]:
         """Get global long/short account ratio history"""
@@ -345,11 +369,27 @@ class CoinGlassAPI:
 
     async def get_supported_coins(self) -> Dict[str, Any]:
         """Get list of supported futures coins"""
-        return await self._make_request("/api/futures/supported-coins")
+        try:
+            result = await self._make_request("/api/futures/supported-coins")
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/supported-coins reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/supported-coins reason: {e}")
+            return {"success": False, "data": []}
 
     async def get_supported_exchange_pairs(self) -> Dict[str, Any]:
         """Get supported exchanges and their trading pairs"""
-        return await self._make_request("/api/futures/supported-exchange-pairs")
+        try:
+            result = await self._make_request("/api/futures/supported-exchange-pairs")
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/supported-exchange-pairs reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/supported-exchange-pairs reason: {e}")
+            return {"success": False, "data": []}
 
     async def get_futures_pairs_markets(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         """Get futures pair markets - uses base symbol (e.g., 'BTC' not 'BTCUSDT')"""
@@ -371,18 +411,34 @@ class CoinGlassAPI:
 
     async def get_futures_coins_markets(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         """Get futures coin markets"""
-        params = {
-            "exchange_list": "Binance,OKX,Bybit",
-            "per_page": 100,
-            "page": 1
-        }
-        if symbol:
-            params["symbol"] = symbol
-        return await self._make_request("/api/futures/coins-markets", params)
+        try:
+            params = {
+                "exchange_list": "Binance,OKX,Bybit",
+                "per_page": 100,
+                "page": 1
+            }
+            if symbol:
+                params["symbol"] = symbol
+            result = await self._make_request("/api/futures/coins-markets", params)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/coins-markets reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/coins-markets reason: {e}")
+            return {"success": False, "data": []}
 
     async def get_price_change_list(self) -> Dict[str, Any]:
         """Get price change list"""
-        return await self._make_request("/api/futures/price-change-list")
+        try:
+            result = await self._make_request("/api/futures/price-change-list")
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/price-change-list reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/price-change-list reason: {e}")
+            return {"success": False, "data": []}
 
     async def get_price_ohlc_history(
         self,
@@ -392,12 +448,20 @@ class CoinGlassAPI:
         end_time: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Get price OHLC history"""
-        params = {"symbol": symbol, "interval": interval}
-        if start_time:
-            params["startTime"] = start_time
-        if end_time:
-            params["endTime"] = end_time
-        return await self._make_request("/api/price/ohlc-history", params)
+        try:
+            params = {"symbol": symbol, "interval": interval}
+            if start_time:
+                params["startTime"] = start_time
+            if end_time:
+                params["endTime"] = end_time
+            result = await self._make_request("/api/price/ohlc-history", params)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/price/ohlc-history reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/price/ohlc-history reason: {e}")
+            return {"success": False, "data": []}
 
     # Open Interest Endpoints
 
@@ -409,12 +473,20 @@ class CoinGlassAPI:
         end_time: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Get OI OHLC history"""
-        params = {"symbol": symbol, "interval": interval}
-        if start_time:
-            params["startTime"] = start_time
-        if end_time:
-            params["endTime"] = end_time
-        return await self._make_request("/api/futures/openInterest/ohlc-history", params)
+        try:
+            params = {"symbol": symbol, "interval": interval}
+            if start_time:
+                params["startTime"] = start_time
+            if end_time:
+                params["endTime"] = end_time
+            result = await self._make_request("/api/futures/openInterest/ohlc-history", params)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/openInterest/ohlc-history reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/openInterest/ohlc-history reason: {e}")
+            return {"success": False, "data": []}
 
     async def get_open_interest_aggregated_history(
         self,
@@ -424,12 +496,20 @@ class CoinGlassAPI:
         end_time: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Get aggregated OI OHLC history"""
-        params = {"symbol": symbol, "interval": interval}
-        if start_time:
-            params["startTime"] = start_time
-        if end_time:
-            params["endTime"] = end_time
-        return await self._make_request("/api/futures/openInterest/ohlc-aggregated-history", params)
+        try:
+            params = {"symbol": symbol, "interval": interval}
+            if start_time:
+                params["startTime"] = start_time
+            if end_time:
+                params["endTime"] = end_time
+            result = await self._make_request("/api/futures/openInterest/ohlc-aggregated-history", params)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/openInterest/ohlc-aggregated-history reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/openInterest/ohlc-aggregated-history reason: {e}")
+            return {"success": False, "data": []}
 
     async def get_open_interest_exchange_list(self, symbol: str) -> Dict[str, Any]:
         """Get open interest by exchange list"""
@@ -458,12 +538,20 @@ class CoinGlassAPI:
         end_time: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Get OI chart by exchange"""
-        params = {"symbol": symbol, "exName": ex_name, "interval": interval}
-        if start_time:
-            params["startTime"] = start_time
-        if end_time:
-            params["endTime"] = end_time
-        return await self._make_request("/api/futures/openInterest/exchange-history-chart", params)
+        try:
+            params = {"symbol": symbol, "exName": ex_name, "interval": interval}
+            if start_time:
+                params["startTime"] = start_time
+            if end_time:
+                params["endTime"] = end_time
+            result = await self._make_request("/api/futures/openInterest/exchange-history-chart", params)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/openInterest/exchange-history-chart reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/openInterest/exchange-history-chart reason: {e}")
+            return {"success": False, "data": []}
 
     # Funding Rate Endpoints
 
@@ -522,12 +610,20 @@ class CoinGlassAPI:
         end_time: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Get top trader long/short account ratio history"""
-        params = {"symbol": symbol, "exName": ex_name, "interval": interval}
-        if start_time:
-            params["startTime"] = start_time
-        if end_time:
-            params["endTime"] = end_time
-        return await self._make_request("/api/futures/top-long-short-account-ratio/history", params)
+        try:
+            params = {"symbol": symbol, "exName": ex_name, "interval": interval}
+            if start_time:
+                params["startTime"] = start_time
+            if end_time:
+                params["endTime"] = end_time
+            result = await self._make_request("/api/futures/top-long-short-account-ratio/history", params)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/top-long-short-account-ratio/history reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/top-long-short-account-ratio/history reason: {e}")
+            return {"success": False, "data": []}
 
     async def get_top_long_short_position_ratio_history(
         self,
@@ -538,12 +634,20 @@ class CoinGlassAPI:
         end_time: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Get top trader position ratio history"""
-        params = {"symbol": symbol, "exName": ex_name, "interval": interval}
-        if start_time:
-            params["startTime"] = start_time
-        if end_time:
-            params["endTime"] = end_time
-        return await self._make_request("/api/futures/top-long-short-position-ratio/history", params)
+        try:
+            params = {"symbol": symbol, "exName": ex_name, "interval": interval}
+            if start_time:
+                params["startTime"] = start_time
+            if end_time:
+                params["endTime"] = end_time
+            result = await self._make_request("/api/futures/top-long-short-position-ratio/history", params)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/top-long-short-position-ratio/history reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/top-long-short-position-ratio/history reason: {e}")
+            return {"success": False, "data": []}
 
     async def get_taker_buy_sell_volume_exchange_list(
         self, symbol: str, ex_name: Optional[str] = None
