@@ -265,12 +265,15 @@ class CoinGlassAPI:
 
     async def get_whale_alert_hyperliquid(self) -> Dict[str, Any]:
         """Get whale alerts from Hyperliquid"""
-        result = await self._make_request("/api/hyperliquid/whale-alert")
-        # Fallback to alternative endpoint if primary fails
-        if not result.get("success"):
-            logger.warning("Primary whale alert endpoint failed, trying alternative")
-            result = await self._make_request("/api/hyperliquid/whale-position")
-        return result
+        try:
+            result = await self._make_request("/api/hyperliquid/whale-alert")
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/hyperliquid/whale-alert reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/hyperliquid/whale-alert reason: {e}")
+            return {"success": False, "data": []}
 
     async def get_whale_position_hyperliquid(self) -> Dict[str, Any]:
         """Get whale positions from Hyperliquid"""
