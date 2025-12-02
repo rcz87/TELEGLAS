@@ -46,6 +46,7 @@ class Settings:
         if user_id.strip()
     ]
     ENABLE_BROADCAST_ALERTS: bool = os.getenv("ENABLE_BROADCAST_ALERTS", "true").lower() == "true"
+    ENABLE_WHALE_ALERTS: bool = os.getenv("ENABLE_WHALE_ALERTS", "true").lower() == "true"
     
     @classmethod
     def validate(cls) -> bool:

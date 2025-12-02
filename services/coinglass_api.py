@@ -74,6 +74,10 @@ class CoinGlassAPI:
         self._rate_limit_info: Optional[RateLimitInfo] = None
         self._last_call_time = 0
         self._min_interval = 60 / max(1, settings.API_CALLS_PER_MINUTE)
+        
+        # Symbol resolution cache
+        self._symbol_cache: Dict[str, Any] = {}
+        self._cache_ttl = 600  # 10 minutes TTL
 
     async def __aenter__(self):
         """Async context manager entry"""
@@ -594,6 +598,93 @@ class CoinGlassAPI:
             }
         return {"used": 0, "limit": 0, "remaining": 0, "reset_time": 0}
 
+    # Symbol Resolution with Caching
+
+    async def resolve_symbol(self, raw_symbol: str) -> Optional[str]:
+        """
+        Normalize and resolve user input symbol to a CoinGlass symbol.
+        Steps:
+        - strip spaces, upper-case
+        - remove common suffixes: 'USDT', 'USD', 'USDC', 'PERP', '-PERP', '_PERP', '3L', '3S'
+        - call CoinGlass coin list or coins-markets endpoint once and cache the result in-memory
+        - match by: exact symbol, startswith / equals base asset
+        - return the canonical symbol used by other endpoints (e.g. 'SOL', 'BTC', 'HYPE')
+        - on failure, return None (do NOT raise)
+        """
+        try:
+            if not raw_symbol:
+                return None
+            
+            # Normalize input
+            normalized = str(raw_symbol).upper().strip()
+            
+            # Remove common suffixes
+            suffixes = ['USDT', 'USD', 'USDC', 'PERP', '-PERP', '_PERP', '3L', '3S', '/', ':']
+            for suffix in suffixes:
+                if normalized.endswith(suffix):
+                    normalized = normalized[:-len(suffix)]
+                    break
+            
+            # Check cache first
+            current_time = time.time()
+            if (self._symbol_cache.get('symbols') and 
+                current_time - self._symbol_cache.get('timestamp', 0) < self._cache_ttl):
+                
+                supported_symbols = self._symbol_cache['symbols']
+                # Try exact match first
+                if normalized in supported_symbols:
+                    return normalized
+                
+                # Try partial match (startswith)
+                for symbol in supported_symbols:
+                    if symbol.startswith(normalized) or normalized.startswith(symbol):
+                        return symbol
+                
+                return None
+            
+            # Cache miss or expired, fetch fresh data
+            async with self:
+                result = await self.get_futures_coins_markets()
+                
+                if not result.get("success"):
+                    logger.warning(f"[SYMBOL_RESOLVER] Failed to fetch supported symbols: {result.get('error')}")
+                    return None
+                
+                data = result.get("data", [])
+                if not isinstance(data, list):
+                    return None
+                
+                # Extract unique symbols
+                supported_symbols = set()
+                for item in data:
+                    if isinstance(item, dict):
+                        symbol = str(item.get("symbol", "")).upper().strip()
+                        if symbol:
+                            supported_symbols.add(symbol)
+                
+                # Update cache
+                self._symbol_cache = {
+                    'symbols': supported_symbols,
+                    'timestamp': current_time
+                }
+                
+                logger.info(f"[SYMBOL_RESOLVER] Cached {len(supported_symbols)} supported symbols")
+                
+                # Try exact match first
+                if normalized in supported_symbols:
+                    return normalized
+                
+                # Try partial match (startswith)
+                for symbol in supported_symbols:
+                    if symbol.startswith(normalized) or normalized.startswith(symbol):
+                        return symbol
+                
+                return None
+                
+        except Exception as e:
+            logger.error(f"[SYMBOL_RESOLVER] Error resolving symbol '{raw_symbol}': {e}")
+            return None
+
     # Raw Data Aggregator - Tier-Safe Implementation
 
     def normalize_symbol(self, symbol: str) -> str:
@@ -622,23 +713,44 @@ class CoinGlassAPI:
         
         return symbol_mapping.get(symbol, symbol)
 
-    async def get_raw_market_snapshot(self, symbol: str) -> Dict[str, Any]:
+    async def get_single_symbol_raw_data(self, symbol: str) -> Dict[str, Any]:
         """
-        Get comprehensive raw market data using only Standard tier endpoints
-        This function is tier-safe and will not crash if endpoints fail
+        Fetch a consolidated snapshot for ONE symbol:
+        - price + 1h/24h/7d change
+        - open interest (total, per exchange if available)
+        - funding rate (current)
+        - 24h volume
+        - 24h liquidations
+        - long/short ratio or taker ratio (if available)
+        All using existing endpoints (open_interest, funding_rate, liquidations, coins-markets, long-short).
+        Use safe_float/safe_int/safe_get everywhere.
+        Return a dict with keys:
+            symbol, price, change_1h, change_24h, change_7d,
+            oi_total, oi_change_24h,
+            funding_rate,
+            volume_24h,
+            liq_24h,
+            ls_ratio,
+            confidence  (0-100, simple heuristic based on data completeness)
+        If the symbol is not supported or all endpoints fail, raise a custom exception e.g. SymbolNotSupported or RawDataUnavailable.
         """
         try:
-            normalized_symbol = self.normalize_symbol(symbol)
-            logger.info(f"[RAW_DATA] Fetching market snapshot for {symbol} -> {normalized_symbol}")
+            # First resolve the symbol
+            resolved_symbol = await self.resolve_symbol(symbol)
+            if not resolved_symbol:
+                logger.info(f"[RAW_SINGLE] Symbol '{symbol}' not supported by CoinGlass")
+                raise SymbolNotSupported(f"Symbol '{symbol}' not supported by CoinGlass")
+            
+            logger.info(f"[RAW_SINGLE] Fetching raw data for {symbol} -> {resolved_symbol}")
             
             async with self:
                 # Fetch data from confirmed working endpoints concurrently
                 tasks = [
-                    self._get_market_price_data(normalized_symbol),
-                    self._get_liquidation_summary(normalized_symbol),
-                    self._get_funding_rate_summary(normalized_symbol),
-                    self._get_open_interest_summary(normalized_symbol),
-                    self._get_long_short_ratio_summary(normalized_symbol),
+                    self._get_market_price_data(resolved_symbol),
+                    self._get_liquidation_summary(resolved_symbol),
+                    self._get_funding_rate_summary(resolved_symbol),
+                    self._get_open_interest_summary(resolved_symbol),
+                    self._get_long_short_ratio_summary(resolved_symbol),
                 ]
                 
                 results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -650,27 +762,60 @@ class CoinGlassAPI:
                 oi_data = results[3] if not isinstance(results[3], Exception) else {}
                 ls_ratio_data = results[4] if not isinstance(results[4], Exception) else {}
                 
-                # Combine all data into structured response
-                snapshot = {
-                    "symbol": normalized_symbol,
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "price": price_data,
-                    "liquidations": liquidation_data,
-                    "funding": funding_data,
-                    "open_interest": oi_data,
-                    "long_short_ratio": ls_ratio_data,
+                # Extract and format data
+                price = safe_float(price_data.get("last_price"))
+                change_1h = safe_float(price_data.get("price_change_1h"))
+                change_24h = safe_float(price_data.get("price_change_24h"))
+                change_7d = safe_float(price_data.get("price_change_7d"))  # May not be available
+                
+                oi_total = safe_float(oi_data.get("total"))
+                oi_change_24h = 0.0  # Not directly available from current endpoints
+                
+                funding_rate = safe_float(funding_data.get("current_average"))
+                volume_24h = safe_float(price_data.get("volume_24h"))
+                liq_24h = safe_float(liquidation_data.get("total_24h"))
+                ls_ratio = safe_float(ls_ratio_data.get("account_ratio"))
+                
+                # Calculate confidence score (0-100) based on data completeness
+                confidence = 0
+                if price > 0:
+                    confidence += 25  # Basic price data
+                if change_1h != 0 or change_24h != 0:
+                    confidence += 15  # Price change data
+                if oi_total > 0:
+                    confidence += 20  # Open interest data
+                if funding_rate != 0:
+                    confidence += 15  # Funding rate data
+                if volume_24h > 0:
+                    confidence += 15  # Volume data
+                if liq_24h > 0:
+                    confidence += 10  # Liquidation data
+                
+                confidence = min(100, confidence)  # Cap at 100
+                
+                result = {
+                    "symbol": resolved_symbol,
+                    "price": price,
+                    "change_1h": change_1h,
+                    "change_24h": change_24h,
+                    "change_7d": change_7d,
+                    "oi_total": oi_total,
+                    "oi_change_24h": oi_change_24h,
+                    "funding_rate": funding_rate,
+                    "volume_24h": volume_24h,
+                    "liq_24h": liq_24h,
+                    "ls_ratio": ls_ratio,
+                    "confidence": confidence,
                 }
                 
-                logger.info(f"[RAW_DATA] Successfully fetched snapshot for {normalized_symbol}")
-                return snapshot
+                logger.info(f"[RAW_SINGLE] Successfully fetched raw data for {resolved_symbol} (confidence: {confidence})")
+                return result
                 
+        except SymbolNotSupported:
+            raise  # Re-raise as is
         except Exception as e:
-            logger.error(f"[RAW_DATA] Error fetching market snapshot for {symbol}: {e}")
-            return {
-                "symbol": self.normalize_symbol(symbol),
-                "error": str(e),
-                "timestamp": datetime.utcnow().isoformat(),
-            }
+            logger.error(f"[RAW_SINGLE] Error fetching raw data for {symbol}: {e}")
+            raise RawDataUnavailable(f"Failed to fetch raw data for {symbol}: {str(e)}")
 
     async def _get_market_price_data(self, symbol: str) -> Dict[str, Any]:
         """Get market price data from futures coins markets endpoint"""
@@ -857,9 +1002,70 @@ class CoinGlassAPI:
             logger.error(f"[RAW_DATA] Error getting L/S ratio for {symbol}: {e}")
             return {}
 
+    async def get_raw_market_snapshot(self, symbol: str) -> Dict[str, Any]:
+        """
+        Get comprehensive raw market data using only Standard tier endpoints
+        This function is tier-safe and will not crash if endpoints fail
+        """
+        try:
+            normalized_symbol = self.normalize_symbol(symbol)
+            logger.info(f"[RAW_DATA] Fetching market snapshot for {symbol} -> {normalized_symbol}")
+            
+            async with self:
+                # Fetch data from confirmed working endpoints concurrently
+                tasks = [
+                    self._get_market_price_data(normalized_symbol),
+                    self._get_liquidation_summary(normalized_symbol),
+                    self._get_funding_rate_summary(normalized_symbol),
+                    self._get_open_interest_summary(normalized_symbol),
+                    self._get_long_short_ratio_summary(normalized_symbol),
+                ]
+                
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Process results safely
+                price_data = results[0] if not isinstance(results[0], Exception) else {}
+                liquidation_data = results[1] if not isinstance(results[1], Exception) else {}
+                funding_data = results[2] if not isinstance(results[2], Exception) else {}
+                oi_data = results[3] if not isinstance(results[3], Exception) else {}
+                ls_ratio_data = results[4] if not isinstance(results[4], Exception) else {}
+                
+                # Combine all data into structured response
+                snapshot = {
+                    "symbol": normalized_symbol,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "price": price_data,
+                    "liquidations": liquidation_data,
+                    "funding": funding_data,
+                    "open_interest": oi_data,
+                    "long_short_ratio": ls_ratio_data,
+                }
+                
+                logger.info(f"[RAW_DATA] Successfully fetched snapshot for {normalized_symbol}")
+                return snapshot
+                
+        except Exception as e:
+            logger.error(f"[RAW_DATA] Error fetching market snapshot for {symbol}: {e}")
+            return {
+                "symbol": self.normalize_symbol(symbol),
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+
+
+# Custom exceptions
+class SymbolNotSupported(Exception):
+    """Raised when a symbol is not supported by CoinGlass"""
+    pass
+
+
+class RawDataUnavailable(Exception):
+    """Raised when raw data cannot be fetched for a symbol"""
+    pass
+
 
 # Global instance
 coinglass_api = CoinGlassAPI()
 
 # Export safe parsing functions for use in other modules
-__all__ = ['CoinGlassAPI', 'coinglass_api', 'safe_float', 'safe_int', 'safe_get', 'safe_list_get']
+__all__ = ['CoinGlassAPI', 'coinglass_api', 'safe_float', 'safe_int', 'safe_get', 'safe_list_get', 'SymbolNotSupported', 'RawDataUnavailable']

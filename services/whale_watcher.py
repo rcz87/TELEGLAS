@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from loguru import logger
-from services.coinglass import CoinGlassAPI, safe_float, safe_int, safe_get, safe_list_get
+from services.coinglass_api import coinglass_api, safe_float, safe_int, safe_get, safe_list_get
 from core.database import db_manager
 from config.settings import settings
 
@@ -39,22 +39,38 @@ class WhaleWatcher:
     """Monitors whale transactions with comprehensive error handling and zero-crash stability"""
 
     def __init__(self):
-        self.api = CoinGlassAPI()
+        self.api = coinglass_api
         self.threshold_usd = settings.WHALE_TRANSACTION_THRESHOLD_USD
         self.whale_history = {}  # symbol -> list of recent whale transactions
         self.last_check_time = None
+        
+        # Debounce tracking: symbol -> last_alert_time
+        self.last_alert_time = {}
+        self.debounce_minutes = 5  # Maximum 1 alert per symbol per 5 minutes
+        
+        # Connection safety
+        self.semaphore = asyncio.Semaphore(3)  # Limit concurrent API calls
+        self.running = False
 
     async def start_monitoring(self):
         """Start the whale monitoring loop"""
-        logger.info("Starting whale monitoring")
+        logger.info("[START] Starting whale monitoring")
+        self.running = True
 
-        while True:
+        while self.running:
             try:
-                await self.check_whale_transactions()
+                async with self.semaphore:  # Limit concurrent API calls
+                    await asyncio.wait_for(
+                        self.check_whale_transactions(),
+                        timeout=30.0  # 30 second timeout for API calls
+                    )
                 await asyncio.sleep(settings.WHALE_POLL_INTERVAL)
 
+            except asyncio.TimeoutError:
+                logger.warning("[TIMEOUT] Whale monitoring API call timed out, continuing...")
+                await asyncio.sleep(settings.WHALE_POLL_INTERVAL)
             except Exception as e:
-                logger.error(f"Error in whale monitoring loop: {e}")
+                logger.error(f"[ERROR] Error in whale monitoring loop: {e}")
                 await asyncio.sleep(30)  # Wait 30 seconds on error
 
     async def check_whale_transactions(self):
@@ -297,8 +313,25 @@ class WhaleWatcher:
             return 0.0
 
     async def _handle_whale_signal(self, signal: WhaleSignal):
-        """Handle generated whale signal"""
+        """Handle generated whale signal with debounce logic"""
         try:
+            # Check debounce logic - only allow 1 alert per symbol per X minutes
+            current_time = datetime.utcnow()
+            symbol = signal.symbol
+            
+            # Check if we recently sent an alert for this symbol
+            if symbol in self.last_alert_time:
+                time_since_last = current_time - self.last_alert_time[symbol]
+                if time_since_last < timedelta(minutes=self.debounce_minutes):
+                    logger.debug(
+                        f"[DEBOUNCE] Skipping whale alert for {symbol} - "
+                        f"last alert was {time_since_last.total_seconds():.0f}s ago"
+                    )
+                    return
+
+            # Update last alert time
+            self.last_alert_time[symbol] = current_time
+
             action_emoji = "🟢" if signal.signal_type == "accumulation" else "🔴"
             side_emoji = "📈" if signal.side == "buy" else "📉"
 

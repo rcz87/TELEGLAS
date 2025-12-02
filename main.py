@@ -86,22 +86,22 @@ class CryptoSatBot:
         signal.signal(signal.SIGTERM, signal_handler)
 
     async def start_monitoring_services(self):
-        """Start all background monitoring services"""
+        """Start background monitoring services based on configuration"""
         logger.info("[START] Starting monitoring services...")
 
-        # Start liquidation monitoring
-        task1 = asyncio.create_task(liquidation_monitor.start_monitoring())
-        self.monitoring_tasks.append(task1)
+        # ONLY start whale watching if enabled
+        if settings.ENABLE_WHALE_ALERTS:
+            logger.info("[START] Starting whale monitoring (ENABLE_WHALE_ALERTS=true)")
+            task = asyncio.create_task(whale_watcher.start_monitoring())
+            self.monitoring_tasks.append(task)
+        else:
+            logger.info("[SKIP] Whale monitoring disabled (ENABLE_WHALE_ALERTS=false)")
 
-        # Start whale watching
-        task2 = asyncio.create_task(whale_watcher.start_monitoring())
-        self.monitoring_tasks.append(task2)
+        # All other monitors (liquidation, funding) are MANUAL ONLY - do not start automatically
+        logger.info("[INFO] Liquidation and funding rate monitoring are MANUAL ONLY")
+        logger.info("[INFO] Use Telegram commands to trigger manual scans")
 
-        # Start funding rate monitoring
-        task3 = asyncio.create_task(funding_rate_radar.start_monitoring())
-        self.monitoring_tasks.append(task3)
-
-        logger.info("[OK] All monitoring services started")
+        logger.info("[OK] Monitoring services configuration complete")
 
     async def _cleanup_data(self):
         """Clean up old data from database"""
@@ -154,14 +154,23 @@ class CryptoSatBot:
             logger.error(f"[ERROR] Failed to restart monitoring task {task_index}: {e}")
 
     async def _broadcast_pending_alerts(self):
-        """Broadcast pending alerts to Telegram channel"""
+        """Broadcast pending alerts to Telegram channel based on configuration"""
         try:
+            # Check if broadcasting is enabled
+            if not settings.ENABLE_BROADCAST_ALERTS and not settings.ENABLE_WHALE_ALERTS:
+                return  # No broadcasting allowed
+
             alerts = await db_manager.get_pending_alerts(limit=10)
 
             for alert in alerts:
+                # Only broadcast whale alerts if general broadcasting is disabled but whale alerts are enabled
+                if not settings.ENABLE_BROADCAST_ALERTS and settings.ENABLE_WHALE_ALERTS:
+                    if alert.get("alert_type") != "whale":
+                        continue  # Skip non-whale alerts
+                
                 await telegram_bot.broadcast_alert(alert["message"])
                 await db_manager.mark_alert_sent(alert["id"])
-                logger.debug(f"Broadcasted alert {alert['id']}")
+                logger.debug(f"Broadcasted alert {alert['id']} (type: {alert.get('alert_type', 'unknown')})")
 
             if alerts:
                 logger.info(f"[BROADCAST] Broadcasted {len(alerts)} alerts")

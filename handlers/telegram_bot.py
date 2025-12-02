@@ -63,6 +63,9 @@ class TelegramBot:
         self.application.add_handler(CommandHandler("status", self.handle_status))
         self.application.add_handler(CommandHandler("alerts", self.handle_alerts))
         self.application.add_handler(CommandHandler("raw", self.handle_raw_data))
+        self.application.add_handler(CommandHandler("alerts_status", self.handle_alerts_status))
+        self.application.add_handler(CommandHandler("alerts_on_w", self.handle_alerts_on_whale))
+        self.application.add_handler(CommandHandler("alerts_off_w", self.handle_alerts_off_whale))
 
         # Callback query handler for inline keyboards
         self.application.add_handler(CallbackQueryHandler(self.handle_callback))
@@ -496,47 +499,159 @@ class TelegramBot:
 
         await update.message.reply_text(message, parse_mode="Markdown")
 
-    async def handle_raw_data(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /raw command - comprehensive market data"""
+    async def handle_alerts_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /alerts_status command - show which alerts are ON/OFF"""
         user_id = update.effective_user.id
         username = update.effective_user.username or update.effective_user.first_name
         
-        # Extract symbol from command
-        symbol = None
-        if context.args:
-            symbol = context.args[0].upper()
-
         # Log incoming update
-        logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /raw command for {symbol or 'no symbol'}")
+        logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /alerts_status command")
 
         if not self._is_whitelisted(user_id):
-            logger.warning(f"[TELEGRAM] User {user_id} (@{username}) denied access to /raw - not whitelisted")
+            logger.warning(f"[TELEGRAM] User {user_id} (@{username}) denied access to /alerts_status - not whitelisted")
             return
 
-        if not symbol:
+        # Build status message
+        whale_status = "🟢 ON" if settings.ENABLE_WHALE_ALERTS else "🔴 OFF"
+        broadcast_status = "🟢 ON" if settings.ENABLE_BROADCAST_ALERTS else "🔴 OFF"
+        
+        message = (
+            "🔔 *Alert System Status*\n\n"
+            f"🐋 Whale Alerts: {whale_status}\n"
+            f"📢 Broadcast Alerts: {broadcast_status}\n\n"
+            "📋 *Manual Only Modules:*\n"
+            "• Liquidation Monitor (MANUAL ONLY)\n"
+            "• Funding Rate Radar (MANUAL ONLY)\n"
+            "• Market Sentiment (MANUAL ONLY)\n"
+            "• Scan & Scalping (MANUAL ONLY)\n"
+            "• Raw Data Analysis (MANUAL ONLY)\n\n"
+            "💡 *Control Commands:*\n"
+            "/alerts_on_w - Turn ON whale alerts\n"
+            "/alerts_off_w - Turn OFF whale alerts\n"
+            "/alerts_status - Show this status"
+        )
+
+        await update.message.reply_text(message, parse_mode="Markdown")
+
+    async def handle_alerts_on_whale(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /alerts_on_w command - turn ON whale alerts"""
+        user_id = update.effective_user.id
+        username = update.effective_user.username or update.effective_user.first_name
+        
+        # Log incoming update
+        logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /alerts_on_w command")
+
+        if not self._is_whitelisted(user_id):
+            logger.warning(f"[TELEGRAM] User {user_id} (@{username}) denied access to /alerts_on_w - not whitelisted")
+            return
+
+        # Update settings (this would typically modify environment variables or config)
+        # For now, just show confirmation and current status
+        if settings.ENABLE_WHALE_ALERTS:
+            await update.message.reply_text(
+                "🐋 *Whale alerts already enabled*\n\n"
+                "Whale monitoring is currently running and will automatically\n"
+                "alert you to significant whale transactions (>$500K).",
+                parse_mode="Markdown",
+            )
+        else:
+            await update.message.reply_text(
+                "⚠️ *Configuration Required*\n\n"
+                "To enable whale alerts, please set:\n"
+                "`ENABLE_WHALE_ALERTS=true` in your environment\n\n"
+                "Then restart the bot for changes to take effect.\n\n"
+                "Current status: Whale alerts are DISABLED",
+                parse_mode="Markdown",
+            )
+            logger.warning(f"[ALERT_CONTROL] User {user_id} tried to enable whale alerts but ENABLE_WHALE_ALERTS=false")
+
+    async def handle_alerts_off_whale(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /alerts_off_w command - turn OFF whale alerts"""
+        user_id = update.effective_user.id
+        username = update.effective_user.username or update.effective_user.first_name
+        
+        # Log incoming update
+        logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /alerts_off_w command")
+
+        if not self._is_whitelisted(user_id):
+            logger.warning(f"[TELEGRAM] User {user_id} (@{username}) denied access to /alerts_off_w - not whitelisted")
+            return
+
+        if not settings.ENABLE_WHALE_ALERTS:
+            await update.message.reply_text(
+                "🐋 *Whale alerts already disabled*\n\n"
+                "Whale monitoring is currently not running automatically.\n"
+                "You can still use /whale command for manual checks.",
+                parse_mode="Markdown",
+            )
+        else:
+            await update.message.reply_text(
+                "⚠️ *Configuration Required*\n\n"
+                "To disable whale alerts, please set:\n"
+                "`ENABLE_WHALE_ALERTS=false` in your environment\n\n"
+                "Then restart the bot for changes to take effect.\n\n"
+                "Current status: Whale alerts are ENABLED",
+                parse_mode="Markdown",
+            )
+            logger.info(f"[ALERT_CONTROL] User {user_id} tried to disable whale alerts but needs config change")
+
+    async def handle_raw_data(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /raw command - comprehensive market data with symbol resolution"""
+        user_id = update.effective_user.id
+        username = update.effective_user.username or update.effective_user.first_name
+        
+        # Check if this is exactly "/raw" or "/raw@botname" with no args
+        message_text = update.message.text.strip()
+        is_raw_only = message_text in ['/raw', f'/raw@{self.application.bot.username}'] if self.application and self.application.bot else message_text == '/raw'
+        
+        if is_raw_only:
             await update.message.reply_text(
                 "❌ *Symbol Required. Usage: /raw [SYMBOL]*",
                 parse_mode="Markdown",
             )
             return
 
+        # Extract argument after /raw
+        try:
+            args_raw = update.message.text.split(maxsplit=1)[1].strip()
+        except IndexError:
+            await update.message.reply_text(
+                "❌ *Symbol Required. Usage: /raw [SYMBOL]*",
+                parse_mode="Markdown",
+            )
+            return
+
+        # Log incoming update
+        logger.info(f"[/raw] user_id={user_id} username={username} symbol={args_raw}")
+
+        if not self._is_whitelisted(user_id):
+            logger.warning(f"[/raw] User {user_id} (@{username}) denied access - not whitelisted")
+            return
+
         # Send typing action to show we're working
         await update.message.chat.send_action(action="typing")
 
         try:
-            # Get comprehensive market data using tier-safe endpoints
-            market_data = await coinglass_api.get_raw_market_snapshot(symbol)
-
-            if "error" in market_data:
-                logger.error(f"[RAW_DATA] Error fetching data for {symbol}: {market_data['error']}")
+            # Resolve symbol first
+            from services.coinglass_api import SymbolNotSupported, RawDataUnavailable
+            
+            resolved = await coinglass_api.resolve_symbol(args_raw)
+            if resolved is None:
                 await update.message.reply_text(
-                    "❌ *Service Error. An error occurred while fetching market data. Please try again later.*",
+                    "❌ *Symbol not supported by CoinGlass.*\n\n"
+                    "Please try a major futures symbol like: BTC, ETH, SOL, HYPE, etc.",
                     parse_mode="Markdown",
                 )
+                logger.info(f"[/raw] Symbol '{args_raw}' not supported, resolved to None")
                 return
 
-            # Format for Telegram display
-            formatted_message = self._format_raw_market_data(market_data)
+            logger.info(f"[/raw] user_id={user_id} username={username} symbol={args_raw} resolved={resolved}")
+
+            # Get single symbol raw data with confidence scoring
+            raw_data = await coinglass_api.get_single_symbol_raw_data(resolved)
+
+            # Format the rich message
+            formatted_message = self._format_single_symbol_raw_data(raw_data)
 
             # Send the comprehensive data
             await update.message.reply_text(
@@ -545,14 +660,98 @@ class TelegramBot:
                 disable_web_page_preview=True
             )
 
-            logger.info(f"[TELEGRAM] Successfully sent /raw response for {symbol} to user {user_id}")
+            logger.info(f"[/raw] Successfully generated response for {resolved}")
 
-        except Exception as e:
-            logger.error(f"[RAW_DATA] Error in /raw command for {symbol}: {e}")
+        except SymbolNotSupported as e:
+            logger.info(f"[/raw] Symbol not supported: {e}")
             await update.message.reply_text(
-                "❌ *Service Error. An error occurred while fetching market data. Please try again later.*",
+                "❌ *Symbol not supported by CoinGlass.*\n\n"
+                "Please try a major futures symbol like: BTC, ETH, SOL, HYPE, etc.",
                 parse_mode="Markdown",
             )
+        except (RawDataUnavailable, Exception) as e:
+            logger.error(f"[/raw] Error fetching raw data for {args_raw}: {e}")
+            await update.message.reply_text(
+                f"❌ *Service Error*\n\n"
+                f"Failed to fetch raw data for {args_raw}. Please try again later.",
+                parse_mode="Markdown",
+            )
+
+    def _format_single_symbol_raw_data(self, data: Dict[str, Any]) -> str:
+        """Format single symbol raw data for Telegram display"""
+        try:
+            symbol = data.get("symbol", "UNKNOWN")
+            price = data.get("price", 0)
+            change_1h = data.get("change_1h", 0)
+            change_24h = data.get("change_24h", 0)
+            change_7d = data.get("change_7d", 0)
+            oi_total = data.get("oi_total", 0)
+            oi_change_24h = data.get("oi_change_24h", 0)
+            funding_rate = data.get("funding_rate", 0)
+            volume_24h = data.get("volume_24h", 0)
+            liq_24h = data.get("liq_24h", 0)
+            ls_ratio = data.get("ls_ratio", 0)
+            confidence = data.get("confidence", 0)
+            
+            # Price section with emojis
+            price_emoji = "🟢" if change_24h >= 0 else "🔴"
+            price_section = (
+                f"📊 *RAW DATA — {symbol}*\n\n"
+                f"• *Price:* ${price:,.4f}  (1H: {change_1h:+.2f}%, 24H: {change_24h:+.2f}%, 7D: {change_7d:+.2f}%)\n"
+            )
+            
+            # Open Interest section
+            oi_section = ""
+            if oi_total > 0:
+                oi_emoji = "🟢" if oi_change_24h >= 0 else "🔴"
+                oi_section = f"• *Open Interest:* ${oi_total:,.0f} (24H: {oi_emoji}{oi_change_24h:+.2f}%)\n"
+            
+            # Funding Rate section
+            funding_section = ""
+            if funding_rate != 0:
+                funding_emoji = "🟢" if funding_rate >= 0 else "🔴"
+                funding_section = f"• *Funding Rate:* {funding_emoji}{funding_rate*100:+.4f}%\n"
+            
+            # Volume section
+            volume_section = ""
+            if volume_24h > 0:
+                volume_section = f"• *Volume 24H:* ${volume_24h:,.0f}\n"
+            
+            # Liquidations section
+            liq_section = ""
+            if liq_24h > 0:
+                liq_section = f"• *Liquidations 24H:* ${liq_24h:,.0f}\n"
+            
+            # Long/Short Ratio section
+            ls_section = ""
+            if ls_ratio > 0:
+                if ls_ratio > 0.6:
+                    ls_emoji = "🟢"  # More longs
+                    bias = "Long Bias"
+                elif ls_ratio < 0.4:
+                    ls_emoji = "🔴"  # More shorts
+                    bias = "Short Bias"
+                else:
+                    ls_emoji = "⚪"  # Balanced
+                    bias = "Balanced"
+                
+                ls_section = f"• *L/S Ratio:* {ls_emoji}{ls_ratio:.3f} ({bias})\n"
+            
+            # Confidence section
+            confidence_emoji = "🟢" if confidence >= 80 else "🟡" if confidence >= 60 else "🔴"
+            confidence_section = f"• *Data Confidence:* {confidence_emoji}{confidence}/100\n"
+            
+            # Combine all sections
+            message = price_section + oi_section + funding_section + volume_section + liq_section + ls_section + confidence_section
+            
+            # Add footer
+            message += f"\nData source: CoinGlass"
+            
+            return message
+            
+        except Exception as e:
+            logger.error(f"[RAW_DATA] Error formatting single symbol data: {e}")
+            return f"❌ Error formatting market data for {data.get('symbol', 'UNKNOWN')}"
 
     def _format_raw_market_data(self, data: Dict[str, Any]) -> str:
         """Format raw market data for Telegram display"""
