@@ -74,7 +74,9 @@ class WhaleWatcher:
                     logger.warning("[TIMEOUT] Whale monitoring API call timed out, continuing...")
                     await asyncio.sleep(settings.WHALE_POLL_INTERVAL)
                 except Exception as e:
-                    logger.error(f"[ERROR] Error in whale monitoring loop: {e}")
+                    error_type = type(e).__name__
+                    logger.error(f"[LOOP_ERROR] {error_type} in whale monitoring loop: {str(e)}")
+                    # Continue the loop - don't let one error stop the monitoring
                     await asyncio.sleep(30)  # Wait 30 seconds on error
 
         finally:
@@ -95,7 +97,9 @@ class WhaleWatcher:
             whale_data = await self.api.get_whale_alert_hyperliquid()
 
             if not whale_data.get("success", False):
-                logger.warning(f"Failed to get whale data: {whale_data.get('error', 'Unknown error')}")
+                error_msg = whale_data.get('error', 'Unknown error')
+                error_type = type(error_msg).__name__
+                logger.error(f"[COINGLASS_ERROR] Whale request failed: {error_type} - {error_msg}")
                 return
 
             # Handle different response formats
@@ -105,13 +109,16 @@ class WhaleWatcher:
             if isinstance(data, dict):
                 data = [data]  # Convert single dict to list
             elif not isinstance(data, list):
-                logger.warning(f"Unexpected whale data format: {type(data)}")
+                logger.warning(f"[DATA_FORMAT] Unexpected whale data format: {type(data)} - Expected list or dict")
                 return
 
             await self._process_whale_data(data)
 
         except Exception as e:
-            logger.error(f"Error checking whale transactions: {e}")
+            error_type = type(e).__name__
+            logger.error(f"[WHALE_WATCHER_ERROR] {error_type} in whale transaction check: {str(e)}")
+            # Don't re-raise - let the monitoring loop continue
+            return
 
     async def _process_whale_data(self, data: List[Dict[str, Any]]):
         """Process whale transaction data and identify significant events"""
