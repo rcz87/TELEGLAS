@@ -86,9 +86,18 @@ class CoinGlassAPI:
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit"""
+        """Async context manager exit - don't close session for long-running processes"""
+        # Only close session if explicitly requested or on critical errors
+        if exc_type and issubclass(exc_type, (KeyboardInterrupt, SystemExit)):
+            if self.session and not self.session.closed:
+                await self.session.close()
+        # For other exceptions, keep session alive for continuous operation
+
+    async def close_session(self):
+        """Explicitly close the session - call this when shutting down"""
         if self.session and not self.session.closed:
             await self.session.close()
+            logger.info("[SESSION] Session explicitly closed")
 
     async def _ensure_session(self):
         """Ensure aiohttp session exists with proper SSL configuration"""

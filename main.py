@@ -218,7 +218,14 @@ class CryptoSatBot:
         self.running = False
 
         try:
-            # Stop monitoring tasks
+            # Stop monitoring tasks gracefully
+            # First stop whale watcher to properly close session
+            try:
+                await whale_watcher.stop_monitoring()
+            except Exception as e:
+                logger.warning(f"[WARNING] Error stopping whale watcher: {e}")
+
+            # Cancel other monitoring tasks
             for i, task in enumerate(self.monitoring_tasks):
                 if not task.done():
                     task.cancel()

@@ -57,44 +57,58 @@ class WhaleWatcher:
         logger.info("[START] Starting whale monitoring")
         self.running = True
 
-        while self.running:
-            try:
-                async with self.semaphore:  # Limit concurrent API calls
-                    await asyncio.wait_for(
-                        self.check_whale_transactions(),
-                        timeout=30.0  # 30 second timeout for API calls
-                    )
-                await asyncio.sleep(settings.WHALE_POLL_INTERVAL)
+        # Initialize session once for continuous operation
+        await self.api._ensure_session()
 
-            except asyncio.TimeoutError:
-                logger.warning("[TIMEOUT] Whale monitoring API call timed out, continuing...")
-                await asyncio.sleep(settings.WHALE_POLL_INTERVAL)
-            except Exception as e:
-                logger.error(f"[ERROR] Error in whale monitoring loop: {e}")
-                await asyncio.sleep(30)  # Wait 30 seconds on error
+        try:
+            while self.running:
+                try:
+                    async with self.semaphore:  # Limit concurrent API calls
+                        await asyncio.wait_for(
+                            self.check_whale_transactions(),
+                            timeout=30.0  # 30 second timeout for API calls
+                        )
+                    await asyncio.sleep(settings.WHALE_POLL_INTERVAL)
+
+                except asyncio.TimeoutError:
+                    logger.warning("[TIMEOUT] Whale monitoring API call timed out, continuing...")
+                    await asyncio.sleep(settings.WHALE_POLL_INTERVAL)
+                except Exception as e:
+                    logger.error(f"[ERROR] Error in whale monitoring loop: {e}")
+                    await asyncio.sleep(30)  # Wait 30 seconds on error
+
+        finally:
+            # Clean up session when stopping
+            if hasattr(self.api, 'close_session'):
+                await self.api.close_session()
+            logger.info("[STOP] Whale monitoring stopped")
+
+    async def stop_monitoring(self):
+        """Stop the whale monitoring loop gracefully"""
+        logger.info("[STOP] Stopping whale monitoring...")
+        self.running = False
 
     async def check_whale_transactions(self):
         """Check for significant whale transactions"""
         try:
-            async with self.api:
-                # Get whale alerts from Hyperliquid
-                whale_data = await self.api.get_whale_alert_hyperliquid()
+            # Get whale alerts from Hyperliquid (session already initialized)
+            whale_data = await self.api.get_whale_alert_hyperliquid()
 
-                if not whale_data.get("success", False):
-                    logger.warning(f"Failed to get whale data: {whale_data.get('error', 'Unknown error')}")
-                    return
+            if not whale_data.get("success", False):
+                logger.warning(f"Failed to get whale data: {whale_data.get('error', 'Unknown error')}")
+                return
 
-                # Handle different response formats
-                data = whale_data.get("data", [])
-                
-                # Handle case where data is not a list (could be dict or single item)
-                if isinstance(data, dict):
-                    data = [data]  # Convert single dict to list
-                elif not isinstance(data, list):
-                    logger.warning(f"Unexpected whale data format: {type(data)}")
-                    return
+            # Handle different response formats
+            data = whale_data.get("data", [])
+            
+            # Handle case where data is not a list (could be dict or single item)
+            if isinstance(data, dict):
+                data = [data]  # Convert single dict to list
+            elif not isinstance(data, list):
+                logger.warning(f"Unexpected whale data format: {type(data)}")
+                return
 
-                await self._process_whale_data(data)
+            await self._process_whale_data(data)
 
         except Exception as e:
             logger.error(f"Error checking whale transactions: {e}")
