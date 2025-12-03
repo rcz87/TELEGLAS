@@ -6,34 +6,9 @@ from loguru import logger
 from config.settings import settings
 
 
-def get_allowed_user_ids() -> Set[int]:
-    """
-    Get all allowed user IDs based on configuration.
-    Always includes the owner, plus whitelist if private mode is enabled.
-    
-    Returns:
-        Set[int]: Set of allowed user IDs
-    """
-    # Always include owner
-    ids = {settings.TELEGRAM_OWNER_ID}
-    
-    # Add whitelist users if configured
-    if settings.TELEGRAM_WHITELIST_IDS:
-        for part in settings.TELEGRAM_WHITELIST_IDS.split(","):
-            part = part.strip()
-            if part:
-                try:
-                    ids.add(int(part))
-                except ValueError:
-                    logger.warning(f"[AUTH] Invalid user id in TELEGRAM_WHITELIST_IDS: {part!r}")
-    
-    logger.debug(f"[AUTH] Allowed user IDs: {ids}")
-    return ids
-
-
 def is_user_allowed(user_id: int) -> bool:
     """
-    Check if a user is allowed to access the bot.
+    Check if a user is allowed to access the bot based on WHITELISTED_USERS configuration.
     
     Args:
         user_id (int): Telegram user ID to check
@@ -41,34 +16,43 @@ def is_user_allowed(user_id: int) -> bool:
     Returns:
         bool: True if user is allowed, False otherwise
     """
-    # If bot is not private, everyone is allowed
-    if not settings.TELEGRAM_PRIVATE_BOT:
-        logger.debug(f"[AUTH] Public mode: allowing user {user_id}")
+    logger.info(f"[AUTH] Checking user {user_id}, WHITELISTED_USERS={settings.WHITELISTED_USERS!r}")
+
+    # Wildcard: semua user boleh (kalau diinginkan)
+    if str(settings.WHITELISTED_USERS).strip() == "*":
+        logger.info("[AUTH] Whitelist='*' => allowing all users")
         return True
-    
-    # In private mode, check against allowed IDs
-    allowed_ids = get_allowed_user_ids()
-    is_allowed = user_id in allowed_ids
-    
-    if is_allowed:
-        logger.debug(f"[AUTH] User {user_id} is allowed")
-    else:
-        logger.info(f"[AUTH] Access denied for user {user_id}")
-    
-    return is_allowed
+
+    try:
+        # Parse WHITELISTED_USERS as comma-separated list or single number
+        whitelist_str = str(settings.WHITELISTED_USERS).strip()
+        if not whitelist_str:
+            logger.warning("[AUTH] WHITELISTED_USERS is empty, denying access")
+            return False
+            
+        allowed_ids = [
+            int(x.strip()) for x in whitelist_str.split(",") if x.strip()
+        ]
+    except Exception as e:
+        logger.error(f"[AUTH] Failed to parse WHITELISTED_USERS: {e}")
+        return False
+
+    allowed = user_id in allowed_ids
+    logger.info(f"[AUTH] Allowed IDs={allowed_ids}, user {user_id} allowed={allowed}")
+    return allowed
 
 
 def is_owner(user_id: int) -> bool:
     """
-    Check if a user is the bot owner.
+    Check if a user is bot owner.
     
     Args:
         user_id (int): Telegram user ID to check
         
     Returns:
-        bool: True if user is the owner, False otherwise
+        bool: True if user is owner, False otherwise
     """
-    return user_id == settings.TELEGRAM_OWNER_ID
+    return user_id == settings.TELEGRAM_ADMIN_CHAT_ID
 
 
 def log_access_attempt(user_id: int, username: str = None, command: str = None, allowed: bool = None):
@@ -103,12 +87,11 @@ def get_access_status_message() -> str:
     Returns:
         str: Status message for logging
     """
-    allowed_ids = get_allowed_user_ids()
+    whitelist_str = str(settings.WHITELISTED_USERS).strip()
     
     status = (
-        f"[AUTH] Private mode: {settings.TELEGRAM_PRIVATE_BOT}, "
-        f"owner: {settings.TELEGRAM_OWNER_ID}, "
-        f"whitelist: {allowed_ids}"
+        f"[AUTH] Whitelist: {whitelist_str}, "
+        f"admin: {settings.TELEGRAM_ADMIN_CHAT_ID}"
     )
     
     return status

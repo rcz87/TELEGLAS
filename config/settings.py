@@ -47,21 +47,11 @@ class Settings:
     TELEGRAM_WHITELIST_IDS: str = os.getenv("TELEGRAM_WHITELIST_IDS", "")
     TELEGRAM_PRIVATE_BOT: bool = os.getenv("TELEGRAM_PRIVATE_BOT", "true").lower() == "true"
     
-    # Legacy support - parse old WHITELISTED_USERS if new whitelist is empty
+    # WHITELISTED_USERS - primary whitelist configuration
     @property
-    def WHITELISTED_USERS(self) -> List[int]:
-        """Legacy property for backward compatibility"""
-        if self.TELEGRAM_WHITELIST_IDS:
-            return [
-                int(user_id.strip()) for user_id in self.TELEGRAM_WHITELIST_IDS.split(",") 
-                if user_id.strip()
-            ]
-        else:
-            # Fallback to old format
-            return [
-                int(user_id.strip()) for user_id in os.getenv("WHITELISTED_USERS", "").split(",") 
-                if user_id.strip()
-            ]
+    def WHITELISTED_USERS(self):
+        """Get WHITELISTED_USERS from environment (supports comma-separated list or single number)"""
+        return os.getenv("WHITELISTED_USERS", "")
     
     @property
     def whitelist_ids(self) -> set[int]:
