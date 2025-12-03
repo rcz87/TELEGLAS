@@ -1,6 +1,7 @@
 import aiohttp
 import asyncio
 import time
+import ssl
 from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass
 from datetime import datetime
@@ -86,14 +87,41 @@ class CoinGlassAPI:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit"""
-        if self.session:
+        if self.session and not self.session.closed:
             await self.session.close()
 
     async def _ensure_session(self):
-        """Ensure aiohttp session exists"""
+        """Ensure aiohttp session exists with proper SSL configuration"""
         if not self.session or self.session.closed:
             headers = {"CG-API-KEY": self.api_key, "User-Agent": "CryptoSat-Bot/1.0"}
-            self.session = aiohttp.ClientSession(headers=headers)
+            
+            # Configure session for better SSL handling and connection management
+            connector = aiohttp.TCPConnector(
+                ssl=ssl.create_default_context(),
+                enable_cleanup_closed=True,
+                force_close=False,
+                limit=100,  # Connection pool limit
+                limit_per_host=30,  # Per-host connection limit
+                ttl_dns_cache=300,  # DNS cache TTL
+                use_dns_cache=True,
+                keepalive_timeout=30,
+                connector_timeout=10,
+            )
+            
+            # Configure timeout settings
+            timeout = aiohttp.ClientTimeout(
+                total=45,  # Total timeout
+                connect=10,  # Connect timeout
+                sock_read=30  # Socket read timeout
+            )
+            
+            self.session = aiohttp.ClientSession(
+                headers=headers,
+                connector=connector,
+                timeout=timeout,
+                auto_decompress=True,
+                trust_env=True  # Respect proxy env vars
+            )
 
     async def _make_request(
         self, endpoint: str, params: Optional[Dict] = None, max_retries: int = 3
@@ -122,7 +150,12 @@ class CoinGlassAPI:
 
         for attempt in range(max_retries):
             try:
-                async with self.session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                # Ensure session is valid before making request
+                if self.session.closed:
+                    logger.warning(f"[SESSION] Session closed, recreating for attempt {attempt + 1}")
+                    await self._ensure_session()
+
+                async with self.session.get(url, params=params) as response:
                     self._last_call_time = time.time()
                     self._parse_rate_limit_headers(response.headers)
 
@@ -188,6 +221,15 @@ class CoinGlassAPI:
 
             except aiohttp.ClientError as e:
                 logger.warning(f"Network error for {endpoint} (attempt {attempt + 1}/{max_retries}): {str(e)}")
+                
+                # Specific handling for SSL errors
+                if "SSL" in str(e) or "ssl" in str(e).lower():
+                    logger.warning(f"[SSL] SSL error detected: {e}")
+                    # Force session recreation on SSL errors
+                    if self.session and not self.session.closed:
+                        await self.session.close()
+                    self.session = None
+                
                 if attempt < max_retries - 1:
                     await asyncio.sleep(2)
                     continue
@@ -264,29 +306,29 @@ class CoinGlassAPI:
             return {"success": False, "data": []}
 
     async def get_whale_alert_hyperliquid(self) -> Dict[str, Any]:
-        """Get whale alerts from Hyperliquid"""
+        """Get whale alerts from Hyperliquid - with fallback for API issues"""
         try:
             result = await self._make_request("/api/hyperliquid/whale-alert")
             if not result.get("success"):
-                logger.error(f"[COINGLASS] Failed endpoint /api/hyperliquid/whale-alert reason: {result.get('error')}")
-                return {"success": False, "data": []}
+                logger.warning(f"[COINGLASS] Whale alerts unavailable: {result.get('error')}")
+                return {"success": False, "data": [], "error": "Whale alerts temporarily unavailable"}
             return result
         except Exception as e:
-            logger.error(f"[COINGLASS] Failed endpoint /api/hyperliquid/whale-alert reason: {e}")
-            return {"success": False, "data": []}
+            logger.warning(f"[COINGLASS] Whale alerts failed: {e}")
+            return {"success": False, "data": [], "error": "Whale alerts temporarily unavailable"}
 
     async def get_whale_position_hyperliquid(self, symbol: str = "BTC") -> Dict[str, Any]:
-        """Get whale positions from Hyperliquid"""
+        """Get whale positions from Hyperliquid - with fallback"""
         try:
             params = {"symbol": symbol}
             result = await self._make_request("/api/hyperliquid/whale-position", params)
             if not result.get("success"):
-                logger.error(f"[COINGLASS] Failed endpoint /api/hyperliquid/whale-position reason: {result.get('error')}")
-                return {"success": False, "data": []}
+                logger.warning(f"[COINGLASS] Whale positions unavailable: {result.get('error')}")
+                return {"success": False, "data": [], "error": "Whale positions temporarily unavailable"}
             return result
         except Exception as e:
-            logger.error(f"[COINGLASS] Failed endpoint /api/hyperliquid/whale-position reason: {e}")
-            return {"success": False, "data": []}
+            logger.warning(f"[COINGLASS] Whale positions failed: {e}")
+            return {"success": False, "data": [], "error": "Whale positions temporarily unavailable"}
 
     async def get_funding_rate_exchange_list(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         """Get funding rates across exchanges"""
@@ -918,7 +960,7 @@ class CoinGlassAPI:
         Steps:
         - strip spaces, upper-case
         - remove common suffixes: 'USDT', 'USD', 'USDC', 'PERP', '-PERP', '_PERP', '3L', '3S'
-        - call CoinGlass coin list or coins-markets endpoint once and cache the result in-memory
+        - call CoinGlass coin list or coins-markets endpoint once and cache result in-memory
         - match by: exact symbol, startswith / equals base asset
         - return the canonical symbol used by other endpoints (e.g. 'SOL', 'BTC', 'HYPE')
         - on failure, return None (do NOT raise)
