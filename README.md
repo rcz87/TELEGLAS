@@ -1,356 +1,371 @@
-# 🛸 CryptoSat Bot - High-Frequency Trading Signals & Market Intelligence
+# TELEGLAS - CryptoSat Bot
 
-**CryptoSat** is a sophisticated Telegram bot that provides real-time cryptocurrency trading signals and market intelligence powered by the CoinGlass API v4. The bot monitors massive liquidations, whale movements, and extreme funding rates to generate actionable trading signals.
+High-Frequency Trading Signals & Market Intelligence Bot for Cryptocurrency Markets
 
-## 🎯 Mission Directive
-
-**Target:** High-Frequency Trading Signals & Market Intelligence  
-**Source:** CoinGlass API v4  
-**Objective:** Real-time detection of pump/dump signals through liquidations, whale movements, and funding rates.
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Python](https://img.shields.io/badge/python-3.8+-green.svg)
+![Telegram](https://img.shields.io/badge/telegram-bot-blue.svg)
 
 ## 🚀 Features
 
-### 📊 Real-Time Monitoring
-- **🔥 Liquidation Monitor**: Detects massive liquidations (> $1M) and generates pump/dump signals
-- **🐋 Whale Watcher**: Tracks whale transactions (>$500K) from Hyperliquid
-- **💰 Funding Rate Radar**: Identifies extreme funding rates for reversal opportunities
+### Core Functionality
+- **Whale Monitoring**: Track large cryptocurrency transactions in real-time
+- **Liquidation Alerts**: Monitor liquidation events across major exchanges
+- **Funding Rate Radar**: Track funding rates for perpetual futures
+- **Market Intelligence**: Comprehensive market data analysis
 
-### 🤖 Telegram Interface
-- **Private Bot**: Whitelist-based access control
-- **Rich Commands**: `/liq`, `/sentiment`, `/whale`, `/subscribe`, etc.
-- **Smart Alerts**: Channel broadcasting with confidence scores
-- **Interactive UI**: Inline keyboards for easy subscription management
+### Integration
+- **CoinGlass API v4**: Professional market data provider
+- **Telegram Bot**: Real-time notifications and commands
+- **PostgreSQL/SQLite**: Flexible database options
+- **Process Locking**: Prevents duplicate instances
 
-### 🛡️ Enterprise Features
-- **Rate Limiting**: Intelligent API throttling to prevent 429 errors
-- **Error Handling**: Comprehensive error recovery and logging
-- **Data Persistence**: SQLite database for user subscriptions and caching
-- **Health Monitoring**: Automatic service restart and health checks
+## 📋 Prerequisites
 
-## 📋 Quick Start
+### System Requirements
+- **Operating System**: Ubuntu/Debian-based Linux
+- **Python**: 3.8 or higher
+- **RAM**: Minimum 2GB (recommended 4GB)
+- **Storage**: Minimum 10GB available space
+- **Network**: Stable internet connection
 
-### 1. 📥 Prerequisites
-- Docker & Docker Compose
-- CoinGlass API Key
+### Required Services
+- PostgreSQL (optional, SQLite supported)
 - Telegram Bot Token
-- (Optional) Telegram Alert Channel ID
+- CoinGlass API Key
 
-### 2. ⚙️ Configuration
+## 🛠️ Quick Start
+
+### Option 1: Automated VPS Deployment (Recommended)
+
+For fresh VPS deployment, use our automated setup script:
+
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd cryptosat-bot
-
-# Copy environment template
-cp .env.example .env
-
-# Edit configuration
-nano .env
+# Download and run the setup script
+cd /opt
+wget https://raw.githubusercontent.com/rcz87/TELEGLAS/master/scripts/setup_vps.sh
+bash setup_vps.sh
 ```
 
-**Required Environment Variables:**
-```env
-# CoinGlass API
-COINGLASS_API_KEY=your_coinglass_api_key
+### Option 2: Manual Installation
 
-# Telegram Bot
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-TELEGRAM_ADMIN_CHAT_ID=your_admin_chat_id
-TELEGRAM_ALERT_CHANNEL_ID=your_alert_channel_id
-
-# Security
-WHITELISTED_USERS=123456789,987654321  # Optional
-```
-
-### 3. 🚀 Deployment
 ```bash
-# Make deploy script executable
-chmod +x scripts/deploy.sh
+# Clone repository
+git clone https://github.com/rcz87/TELEGLAS.git
+cd TELEGLAS
 
-# Deploy the bot
-./scripts/deploy.sh deploy
-```
-
-### 4. 📱 Bot Commands
-```bash
-/start     - Start bot and show welcome
-/liq BTC    - Get liquidation data for Bitcoin
-/sentiment  - Show Fear & Greed Index
-/whale      - Display recent whale transactions
-/subscribe BTC - Subscribe to Bitcoin alerts
-/alerts     - View your subscriptions
-/status      - Bot status and performance
-```
-
-## 🏗️ Architecture
-
-### Phase 1: Architecture & Security ✅
-- [x] API Credential Management
-- [x] Rate Limit Strategy
-- [x] SQLite Database Layer
-- [x] Error Handling Framework
-
-### Phase 2: Data Pipeline Integration ✅
-- [x] CoinGlass API Wrapper
-- [x] Real-time Endpoint Integration
-- [x] Market Sentiment Data
-
-### Phase 3: Intelligence & Alert Logic ✅
-- [x] Liquidation Monitor (Pump/Dump Detection)
-- [x] Whale Watcher (Accumulation/Distribution)
-- [x] Funding Rate Radar (Reversal Signals)
-- [x] Scheduler System (APScheduler)
-
-### Phase 4: Telegram Interface ✅
-- [x] Command Handlers
-- [x] User Authentication
-- [x] Alert Broadcasting
-- [x] Interactive Keyboards
-
-### Phase 5: Testing & Deployment ✅
-- [x] Docker Containerization
-- [x] Health Checks
-- [x] Deployment Scripts
-- [x] Logging & Monitoring
-
-## 📁 Project Structure
-
-```
-cryptosat-bot/
-├── config/
-│   └── settings.py          # Configuration management
-├── core/
-│   └── database.py          # SQLite database layer
-├── handlers/
-│   └── telegram_bot.py      # Telegram bot interface
-├── services/
-│   ├── coinglass.py         # CoinGlass API wrapper
-│   ├── liquidation_monitor.py  # Liquidation monitoring
-│   ├── whale_watcher.py     # Whale transaction tracking
-│   └── funding_rate_radar.py # Funding rate analysis
-├── scripts/
-│   └── deploy.sh           # Deployment automation
-├── data/                   # Database storage
-├── logs/                   # Log files
-├── Dockerfile              # Container configuration
-├── docker-compose.yml       # Multi-container setup
-├── requirements.txt        # Python dependencies
-├── .env.example          # Environment template
-└── main.py               # Application entry point
-```
-
-## ⚡ Performance Metrics
-
-### Monitoring Intervals
-- **Liquidations**: Every 10 seconds (Critical)
-- **Whale Alerts**: Every 5 seconds (Critical)
-- **Funding Rates**: Every 30 seconds (Important)
-
-### Signal Thresholds
-- **Liquidations**: $1,000,000+ (15min: $500,000+)
-- **Whale Transactions**: $500,000+
-- **Funding Rates**: ±1% (extreme)
-- **Confidence Score**: 30%+ minimum
-
-### Rate Limiting
-- **API Calls**: 100/minute maximum
-- **Auto Retry**: On 429 errors
-- **Backoff Strategy**: Exponential delay
-- **Header Monitoring**: Real-time limit tracking
-
-## 🔧 Management Commands
-
-### Bot Management
-```bash
-# Deploy bot
-./scripts/deploy.sh deploy
-
-# Stop bot
-./scripts/deploy.sh stop
-
-# Restart bot
-./scripts/deploy.sh restart
-
-# View logs
-./scripts/deploy.sh logs
-
-# Update bot
-./scripts/deploy.sh update
-
-# Check status
-./scripts/deploy.sh status
-```
-
-### Docker Operations
-```bash
-# Build image
-docker build -t cryptosat-bot .
-
-# Run container
-docker run -d --name cryptosat-bot \
-  --env-file .env \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/logs:/app/logs \
-  cryptosat-bot
-
-# View logs
-docker logs -f cryptosat-bot
-
-# Stop container
-docker stop cryptosat-bot
-```
-
-## 📊 Signal Examples
-
-### 🚨 Liquidation Alert
-```
-🔴 DUMP ALERT BTC
-💰 Total Liquidations: $2,500,000
-📉 Long Liquidations: $2,100,000
-📈 Short Liquidations: $400,000
-⚖️ L/S Ratio: 5.25
-🎯 Confidence: 85%
-🕐 Time: 14:32:15 UTC
-```
-
-### 🐋 Whale Alert
-```
-🟢 ACCUMULATION ALERT ETH
-📈 Whale BUY $1,200,000
-💲 Price: $2,234.56
-🎯 Confidence: 75%
-🕐 Time: 14:28:42 UTC
-🏦 Exchange: Hyperliquid
-```
-
-### 💰 Funding Rate Alert
-```
-🔴 SHORT REVERSAL ALERT SOL
-📉 Funding Rate: 0.0150 (EXTREME HIGH)
-📊 24h Avg: 0.0080
-🏦 Exchanges: 5
-🎯 Confidence: 70%
-🕐 Time: 14:45:30 UTC
-⚠️ Potential funding squeeze incoming!
-```
-
-## 🛠️ Development
-
-### Local Development
-```bash
-# Create virtual environment
-python -m venv venv
+# Setup virtual environment
+python3 -m venv venv
 source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Set environment variables
-export COINGLASS_API_KEY=your_key
-export TELEGRAM_BOT_TOKEN=your_token
+# Configure environment
+cp .env.example .env
+nano .env  # Edit with your configuration
 
-# Run bot
-python main.py
+# Run the bot
+python3 main.py
 ```
 
-### Testing
+## ⚙️ Configuration
+
+### Environment Variables (.env)
+
+```env
+# Telegram Bot Configuration
+BOT_TOKEN=your_bot_token_here
+ADMIN_USER_ID=your_telegram_user_id
+TELEGRAM_ENABLED=true
+
+# Database Configuration
+DATABASE_URL=postgresql://cryptosatx_user:password@localhost:5432/cryptosatx
+# Or use SQLite: DATABASE_URL=sqlite:///data/cryptosat.db
+
+# CoinGlass API
+COINGLASS_API_KEY=your_coinglass_api_key
+
+# Feature Toggles
+ENABLE_WHALE_ALERTS=true
+ENABLE_LIQUIDATION_ALERTS=false
+ENABLE_FUNDING_RATE_ALERTS=false
+
+# Logging
+LOG_LEVEL=INFO
+```
+
+### Getting Required Credentials
+
+#### 1. Telegram Bot Token
+1. Create a bot with [@BotFather](https://t.me/BotFather)
+2. Send `/newbot` command
+3. Follow instructions to get your bot token
+
+#### 2. Telegram User ID
+1. Start a chat with [@userinfobot](https://t.me/userinfobot)
+2. Send any message to get your user ID
+
+#### 3. CoinGlass API Key
+1. Register at [CoinGlass](https://www.coinglass.com/)
+2. Subscribe to API service
+3. Get your API key from dashboard
+
+## 🚀 Deployment
+
+### VPS Deployment
+
+For production deployment on VPS:
+
+#### Automated Setup
 ```bash
-# Test API connection
-python -c "from services.coinglass import CoinGlassAPI; \
-  import asyncio; \
-  asyncio.run(CoinGlassAPI().get_supported_coins())"
-
-# Test database
-python -c "from core.database import db_manager; \
-  import asyncio; \
-  asyncio.run(db_manager.initialize())"
+cd /opt
+wget https://raw.githubusercontent.com/rcz87/TELEGLAS/master/scripts/setup_vps.sh
+bash setup_vps.sh
 ```
 
-## 🔒 Security Features
+#### Manual Service Setup
+```bash
+# Create systemd service
+sudo nano /etc/systemd/system/teleglas.service
+```
 
-- **Whitelist Authentication**: Only authorized users can access the bot
-- **API Key Protection**: Environment variable storage, no hardcoding
-- **Rate Limiting**: Intelligent throttling prevents API bans
-- **Input Validation**: All user inputs are sanitized
-- **Error Boundaries**: Comprehensive exception handling
-- **Container Security**: Non-root user, minimal attack surface
+```ini
+[Unit]
+Description=CryptoSat Bot - High-Frequency Trading Signals
+After=network.target postgresql.service
 
-## 📈 Monitoring & Logging
+[Service]
+Type=simple
+User=your_username
+WorkingDirectory=/opt/TELEGLAS
+Environment=PATH=/opt/TELEGLAS/venv/bin
+ExecStart=/opt/TELEGLAS/venv/bin/python3 /opt/TELEGLAS/main.py
+Restart=always
+RestartSec=10
 
-### Log Levels
-- **INFO**: General operational information
-- **WARNING**: Non-critical issues
-- **ERROR**: Failed operations
-- **DEBUG**: Detailed debugging
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+# Enable and start service
+sudo systemctl enable teleglas.service
+sudo systemctl start teleglas.service
+```
+
+### Service Management Commands
+
+```bash
+# Check status
+sudo systemctl status teleglas.service
+
+# View logs
+sudo journalctl -u teleglas.service -f
+
+# Restart service
+sudo systemctl restart teleglas.service
+
+# Stop service
+sudo systemctl stop teleglas.service
+```
+
+## 🛠️ Troubleshooting
+
+### Service Issues
+
+If you encounter "Unit teleglas.service not found" error:
+
+```bash
+# Run the service fix script
+cd /opt/TELEGLAS
+bash scripts/fix_service.sh
+```
+
+### Bot Responsiveness Issues
+
+If the bot starts but doesn't respond to commands:
+
+1. **Check Logs**:
+   ```bash
+   sudo journalctl -u teleglas.service -f
+   ```
+
+2. **Verify Configuration**:
+   ```bash
+   nano /opt/TELEGLAS/.env
+   # Ensure BOT_TOKEN and ADMIN_USER_ID are correct
+   ```
+
+3. **Test Connection**:
+   ```bash
+   cd /opt/TELEGLAS
+   source venv/bin/activate
+   python3 -c "
+   import asyncio
+   from aiogram import Bot
+   import os
+   
+   async def test():
+       bot = Bot(token=os.getenv('BOT_TOKEN'))
+       info = await bot.get_me()
+       print(f'Bot connected: @{info.username}')
+   
+   asyncio.run(test())
+   "
+   ```
+
+4. **Update and Restart**:
+   ```bash
+   cd /opt/TELEGLAS
+   git pull origin master
+   source venv/bin/activate
+   pip install -r requirements.txt
+   sudo systemctl restart teleglas.service
+   ```
+
+### Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| `Invalid bot token` | Verify BOT_TOKEN in .env file |
+| `Database connection failed` | Check DATABASE_URL and PostgreSQL status |
+| `TCPConnector error` | Update to latest code: `git pull origin master` |
+| `Permission denied` | Check file ownership: `sudo chown -R user:user /opt/TELEGLAS` |
+
+## 📱 Telegram Bot Commands
+
+### Basic Commands
+- `/start` - Initialize bot and show welcome message
+- `/help` - Display all available commands
+- `/status` - Check bot status and connection info
+
+### Trading Commands
+- `/whale` - Get latest whale transactions
+- `/liquidations` - View recent liquidation events
+- `/funding` - Check current funding rates
+
+### Admin Commands (Admin Only)
+- `/restart` - Restart the bot service
+- `/logs` - Get recent log entries
+- `/config` - View current configuration
+
+## 🔧 Maintenance
+
+### Updates
+
+To update the application:
+
+```bash
+cd /opt/TELEGLAS
+git pull origin master
+source venv/bin/activate
+pip install -r requirements.txt
+sudo systemctl restart teleglas.service
+```
+
+### Backup
+
+#### SQLite Backup
+```bash
+cp /opt/TELEGLAS/data/cryptosat.db /opt/TELEGLAS/data/backup_$(date +%Y%m%d_%H%M%S).db
+```
+
+#### PostgreSQL Backup
+```bash
+sudo -u postgres pg_dump cryptosatx > /opt/TELEGLAS/data/backup_$(date +%Y%m%d_%H%M%S).sql
+```
+
+### Log Management
+
+Configure log rotation to prevent disk space issues:
+
+```bash
+sudo nano /etc/logrotate.d/teleglas
+```
+
+```
+/opt/TELEGLAS/logs/*.log {
+    daily
+    missingok
+    rotate 7
+    compress
+    notifempty
+    copytruncate
+}
+```
+
+## 📊 Monitoring
 
 ### Health Checks
-- **Database Connectivity**: SQLite connection tests
-- **API Status**: CoinGlass endpoint availability
-- **Service Monitoring**: Background task health
-- **Resource Usage**: Memory and CPU monitoring
 
-## 🚀 Production Deployment
+Monitor these indicators in logs:
 
-### System Requirements
-- **CPU**: 0.5+ cores
-- **Memory**: 512MB+ RAM
-- **Storage**: 1GB+ disk space
-- **Network**: Stable internet connection
+- `[OK] Telegram bot connection established` - Successful startup
+- `[STARTUP] CryptoSat Bot is now fully operational` - Bot ready
+- Command response times (should be < 2 seconds)
 
-### VPS Setup (Ubuntu/Debian)
+### Performance Metrics
+
+- **Memory Usage**: Monitor for memory leaks
+- **CPU Usage**: Should be minimal during normal operation
+- **Database Connections**: Should not exceed configured limits
+- **API Rate Limits**: Respect CoinGlass API limits
+
+## 🔒 Security
+
+### Best Practices
+
+1. **Environment Variables**: Never commit .env file to version control
+2. **Database Security**: Use strong database passwords
+3. **Firewall**: Configure UFW firewall properly
+4. **SSL**: Use HTTPS for webhook mode (if configured)
+5. **Regular Updates**: Keep system and dependencies updated
+
+### File Permissions
+
 ```bash
-# Install Docker
-curl -fsSL https://get.docker.com -o get-docker.sh
-sh get-docker.sh
-
-# Install Docker Compose
-sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-
-# Clone and deploy
-git clone <repository-url>
-cd cryptosat-bot
-chmod +x scripts/deploy.sh
-./scripts/deploy.sh deploy
+# Secure configuration files
+chmod 600 /opt/TELEGLAS/.env
+chmod 644 /opt/TELEGLAS/*.py
+chmod 755 /opt/TELEGLAS/scripts/*.sh
 ```
 
-## 🔮 Future Enhancements
+## 📚 Documentation
 
-- [ ] **Multi-Exchange Support**: Binance, Bybit, OKX integration
-- [ ] **Machine Learning**: Pattern recognition for signal accuracy
-- [ ] **Web Dashboard**: Real-time monitoring interface
-- [ ] **Alert Customization**: User-defined thresholds and conditions
-- [ ] **Portfolio Integration**: Connect to exchange accounts
-- [ ] **Mobile App**: Native iOS/Android applications
+- [VPS Deployment Instructions](VPS_DEPLOYMENT_INSTRUCTIONS.md) - Detailed VPS setup guide
+- [Telegram Bot Fix Summary](TELEGRAM_BOT_FIX_SUMMARY.md) - Recent fixes and improvements
+- [Deployment Guide](DEPLOYMENT_GUIDE.md) - General deployment information
 
-## 📞 Support
+## 🤝 Contributing
 
-### Troubleshooting
-1. **Bot not responding**: Check API keys in `.env` file
-2. **No alerts**: Verify channel ID and permissions
-3. **High memory usage**: Restart container with `./scripts/deploy.sh restart`
-4. **API errors**: Check CoinGlass API status and rate limits
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Commit changes: `git commit -am 'Add feature'`
+4. Push to branch: `git push origin feature-name`
+5. Submit a pull request
 
-### Logs
-```bash
-# View recent logs
-./scripts/deploy.sh logs
+## 📄 License
 
-# Search for errors
-docker logs cryptosat-bot 2>&1 | grep ERROR
-```
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-### Health Monitoring
-- **Container Status**: `./scripts/deploy.sh status`
-- **API Rate Limits**: Check bot logs for "Rate limiting" messages
-- **Database Size**: Monitor `/app/data/cryptosat.db` size
+## 🆘 Support
 
-## 📜 License
+If you encounter issues:
 
-This project is proprietary software. All rights reserved.
+1. Check the logs for error messages
+2. Review this README and documentation
+3. Search existing [GitHub Issues](https://github.com/rcz87/TELEGLAS/issues)
+4. Create a new issue with detailed error information
+
+## 🔄 Changelog
+
+### Recent Updates (December 2024)
+- **Enhanced Telegram Bot Responsiveness**: Fixed connection testing and polling issues
+- **Improved Error Handling**: Better retry mechanisms and logging
+- **Automated Deployment Scripts**: Added setup and service fix scripts
+- **Updated Documentation**: Comprehensive deployment and troubleshooting guides
 
 ---
 
-**⚡ CryptoSat Bot - Your Gateway to High-Frequency Trading Intelligence**
-
-*Powered by CoinGlass API v4 | Built with Python 3.11 | Deployed with Docker*
+**⚠️ Disclaimer**: This bot is for informational purposes only. Always do your own research before making trading decisions.
