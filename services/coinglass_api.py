@@ -105,7 +105,6 @@ class CoinGlassAPI:
                 ttl_dns_cache=300,  # DNS cache TTL
                 use_dns_cache=True,
                 keepalive_timeout=30,
-                connector_timeout=10,
             )
             
             # Configure timeout settings
