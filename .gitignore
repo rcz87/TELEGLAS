@@ -42,3 +42,7 @@ Thumbs.db
 
 # Test files
 test_*.py
+
+# Lock files
+*.lock
+.bot.lock
