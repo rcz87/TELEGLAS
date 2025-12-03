@@ -25,8 +25,8 @@ from utils.auth import is_user_allowed, log_access_attempt, get_access_status_me
 
 def require_access(func):
     """
-    Decorator to check if user is allowed to access the bot.
-    Replaces the old _is_whitelisted method with centralized auth.
+    Decorator to check if user is allowed to access bot.
+    Replaces old _is_whitelisted method with centralized auth.
     """
     @wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
@@ -104,7 +104,7 @@ class TelegramBot:
         return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', msg)
 
     async def initialize(self):
-        """Initialize the Telegram bot"""
+        """Initialize Telegram bot"""
         if not self.token:
             raise ValueError("TELEGRAM_BOT_TOKEN is required")
 
@@ -639,7 +639,7 @@ class TelegramBot:
         await update.message.chat.send_action(action="typing")
 
         try:
-            # Import the raw data service for comprehensive data aggregation
+            # Import raw data service for comprehensive data aggregation
             from services.raw_data_service import raw_data_service
             from services.coinglass_api import SymbolNotSupported, RawDataUnavailable
             
@@ -659,7 +659,7 @@ class TelegramBot:
             # Format to standardized layout
             formatted_message = self._format_standardized_raw_output(comprehensive_data)
 
-            # Send the comprehensive data as plain text to avoid Markdown parsing errors
+            # Send comprehensive data as plain text to avoid Markdown parsing errors
             await update.message.reply_text(
                 formatted_message,
                 parse_mode=None,  # No Markdown parsing
@@ -804,7 +804,7 @@ class TelegramBot:
             # Format funding history
             funding_history_text = 'No history available' if not funding_history else f'{len(funding_history)} entries'
             
-            # Build the exact standardized message
+            # Build exact standardized message
             message = f"""[RAW DATA - {symbol} - REAL PRICE MULTI-TF]
 
 Info Umum
@@ -879,382 +879,6 @@ Resistance: {resistance_str}"""
             logger.error(f"[RAW_DATA] Error formatting standardized data: {e}")
             return f"❌ Error formatting standardized market data for {safe_get(data, 'symbol', 'UNKNOWN')}"
 
-    def _format_single_symbol_raw_data(self, data: Dict[str, Any]) -> str:
-        """Format single symbol raw data for Telegram display"""
-        try:
-            symbol = data.get("symbol", "UNKNOWN")
-            price = data.get("price", 0)
-            change_1h = data.get("change_1h", 0)
-            change_24h = data.get("change_24h", 0)
-            change_7d = data.get("change_7d", 0)
-            oi_total = data.get("oi_total", 0)
-            oi_change_24h = data.get("oi_change_24h", 0)
-            funding_rate = data.get("funding_rate", 0)
-            volume_24h = data.get("volume_24h", 0)
-            liq_24h = data.get("liq_24h", 0)
-            ls_ratio = data.get("ls_ratio", 0)
-            confidence = data.get("confidence", 0)
-            
-            # Price section with emojis
-            price_emoji = "🟢" if change_24h >= 0 else "🔴"
-            price_section = (
-                f"📊 *RAW DATA — {symbol}*\n\n"
-                f"• *Price:* ${price:,.4f}  (1H: {change_1h:+.2f}%, 24H: {change_24h:+.2f}%, 7D: {change_7d:+.2f}%)\n"
-            )
-            
-            # Open Interest section
-            oi_section = ""
-            if oi_total > 0:
-                oi_emoji = "🟢" if oi_change_24h >= 0 else "🔴"
-                oi_section = f"• *Open Interest:* ${oi_total:,.0f} (24H: {oi_emoji}{oi_change_24h:+.2f}%)\n"
-            
-            # Funding Rate section
-            funding_section = ""
-            if funding_rate != 0:
-                funding_emoji = "🟢" if funding_rate >= 0 else "🔴"
-                funding_section = f"• *Funding Rate:* {funding_emoji}{funding_rate*100:+.4f}%\n"
-            
-            # Volume section
-            volume_section = ""
-            if volume_24h > 0:
-                volume_section = f"• *Volume 24H:* ${volume_24h:,.0f}\n"
-            
-            # Liquidations section
-            liq_section = ""
-            if liq_24h > 0:
-                liq_section = f"• *Liquidations 24H:* ${liq_24h:,.0f}\n"
-            
-            # Long/Short Ratio section
-            ls_section = ""
-            if ls_ratio > 0:
-                if ls_ratio > 0.6:
-                    ls_emoji = "🟢"  # More longs
-                    bias = "Long Bias"
-                elif ls_ratio < 0.4:
-                    ls_emoji = "🔴"  # More shorts
-                    bias = "Short Bias"
-                else:
-                    ls_emoji = "⚪"  # Balanced
-                    bias = "Balanced"
-                
-                ls_section = f"• *L/S Ratio:* {ls_emoji}{ls_ratio:.3f} ({bias})\n"
-            
-            # Confidence section
-            confidence_emoji = "🟢" if confidence >= 80 else "🟡" if confidence >= 60 else "🔴"
-            confidence_section = f"• *Data Confidence:* {confidence_emoji}{confidence}/100\n"
-            
-            # Combine all sections
-            message = price_section + oi_section + funding_section + volume_section + liq_section + ls_section + confidence_section
-            
-            # Add footer
-            message += f"\nData source: CoinGlass"
-            
-            return message
-            
-        except Exception as e:
-            logger.error(f"[RAW_DATA] Error formatting single symbol data: {e}")
-            return f"❌ Error formatting market data for {data.get('symbol', 'UNKNOWN')}"
-
-    def _format_standardized_raw_data(self, data: Dict[str, Any]) -> str:
-        """Format comprehensive raw data according to the standardized layout"""
-        try:
-            from services.coinglass_api import safe_float, safe_int, safe_get, safe_list_get
-            
-            symbol = safe_get(data, 'symbol', 'UNKNOWN').upper()
-            timestamp = safe_get(data, 'timestamp', '')
-            
-            # Extract general info
-            general = safe_get(data, 'general_info', {})
-            price_change = safe_get(data, 'price_change', general)  # fallback to general
-            oi = safe_get(data, 'open_interest', {})
-            volume = safe_get(data, 'volume', {})
-            funding = safe_get(data, 'funding', {})
-            liquidations = safe_get(data, 'liquidations', {})
-            ls_ratio = safe_get(data, 'long_short_ratio', {})
-            taker_flow = safe_get(data, 'taker_flow', {})
-            rsi = safe_get(data, 'rsi', {})
-            cg_levels = safe_get(data, 'cg_levels', {})
-            
-            # Info Umum section
-            last_price = safe_float(safe_get(general, 'last_price'), 0.0)
-            mark_price = safe_float(safe_get(general, 'mark_price'), 0.0)
-            
-            # Price Change section
-            change_1h = safe_float(safe_get(price_change, '1h'), 0.0)
-            change_4h = safe_float(safe_get(price_change, '4h'), 0.0)
-            change_24h = safe_float(safe_get(price_change, '24h'), 0.0)
-            high_24h = safe_float(safe_get(price_change, 'high_24h'), 0.0)
-            low_24h = safe_float(safe_get(price_change, 'low_24h'), 0.0)
-            high_7d = safe_float(safe_get(price_change, 'high_7d'), 0.0)
-            low_7d = safe_float(safe_get(price_change, 'low_7d'), 0.0)
-            
-            # Open Interest section
-            total_oi = safe_float(safe_get(oi, 'total_oi'), 0.0)
-            oi_change_1h = safe_float(safe_get(oi, 'oi_1h'), 0.0)
-            oi_change_24h = safe_float(safe_get(oi, 'oi_24h'), 0.0)
-            per_exchange = safe_get(oi, 'per_exchange', {})
-            oi_binance = safe_float(safe_get(per_exchange, 'Binance'), 0.0)
-            oi_bybit = safe_float(safe_get(per_exchange, 'Bybit'), 0.0)
-            oi_okx = safe_float(safe_get(per_exchange, 'OKX'), 0.0)
-            oi_others = safe_float(safe_get(per_exchange, 'Others'), 0.0)
-            
-            # Volume section
-            futures_24h = safe_float(safe_get(volume, 'futures_24h'), 0.0)
-            perp_24h = safe_float(safe_get(volume, 'perp_24h'), 0.0)
-            spot_24h = safe_float(safe_get(volume, 'spot_24h'), 0.0)
-            
-            # Funding section
-            current_funding = safe_float(safe_get(funding, 'current_funding'), 0.0)
-            next_funding = safe_get(funding, 'next_funding', 'N/A')
-            funding_history = safe_get(funding, 'funding_history', [])
-            funding_history_text = 'No history available' if not funding_history else f'{len(funding_history)} entries'
-            
-            # Liquidations section
-            total_liq_24h = safe_float(safe_get(liquidations, 'total_24h'), 0.0)
-            long_liq_24h = safe_float(safe_get(liquidations, 'long_liq'), 0.0)
-            short_liq_24h = safe_float(safe_get(liquidations, 'short_liq'), 0.0)
-            
-            # Long/Short Ratio section
-            account_ratio_global = safe_float(safe_get(ls_ratio, 'account_ratio_global'), 1.0)
-            position_ratio_global = safe_float(safe_get(ls_ratio, 'position_ratio_global'), 1.0)
-            ls_by_exchange = safe_get(ls_ratio, 'by_exchange', {})
-            ls_binance = safe_float(safe_get(ls_by_exchange, 'Binance'), 1.0)
-            ls_bybit = safe_float(safe_get(ls_by_exchange, 'Bybit'), 1.0)
-            ls_okx = safe_float(safe_get(ls_by_exchange, 'OKX'), 1.0)
-            
-            # Taker Flow section
-            tf_5m = safe_get(taker_flow, '5m', {})
-            tf_15m = safe_get(taker_flow, '15m', {})
-            tf_1h = safe_get(taker_flow, '1h', {})
-            tf_4h = safe_get(taker_flow, '4h', {})
-            
-            buy_5m = safe_float(safe_get(tf_5m, 'buy'), 0.0)
-            sell_5m = safe_float(safe_get(tf_5m, 'sell'), 0.0)
-            net_5m = safe_float(safe_get(tf_5m, 'net'), 0.0)
-            
-            buy_15m = safe_float(safe_get(tf_15m, 'buy'), 0.0)
-            sell_15m = safe_float(safe_get(tf_15m, 'sell'), 0.0)
-            net_15m = safe_float(safe_get(tf_15m, 'net'), 0.0)
-            
-            buy_1h = safe_float(safe_get(tf_1h, 'buy'), 0.0)
-            sell_1h = safe_float(safe_get(tf_1h, 'sell'), 0.0)
-            net_1h = safe_float(safe_get(tf_1h, 'net'), 0.0)
-            
-            buy_4h = safe_float(safe_get(tf_4h, 'buy'), 0.0)
-            sell_4h = safe_float(safe_get(tf_4h, 'sell'), 0.0)
-            net_4h = safe_float(safe_get(tf_4h, 'net'), 0.0)
-            
-            # RSI section
-            rsi_5m = safe_float(safe_get(rsi, '5m'), 0.0)
-            rsi_15m = safe_float(safe_get(rsi, '15m'), 0.0)
-            rsi_1h = safe_float(safe_get(rsi, '1h'), 0.0)
-            rsi_4h = safe_float(safe_get(rsi, '4h'), 0.0)
-            
-            # CG Levels section
-            support_levels = safe_get(cg_levels, 'support', [0.0, 0.0, 0.0])
-            resistance_levels = safe_get(cg_levels, 'resistance', [0.0, 0.0, 0.0])
-            
-            # Format values with proper units
-            total_oi_billion = total_oi / 1e9 if total_oi > 0 else 0.0
-            oi_binance_billion = oi_binance / 1e9 if oi_binance > 0 else 0.0
-            oi_bybit_billion = oi_bybit / 1e9 if oi_bybit > 0 else 0.0
-            oi_okx_billion = oi_okx / 1e9 if oi_okx > 0 else 0.0
-            oi_others_billion = oi_others / 1e9 if oi_others > 0 else 0.0
-            
-            futures_volume_24h_billion = futures_24h / 1e9 if futures_24h > 0 else 0.0
-            perp_volume_24h_billion = perp_24h / 1e9 if perp_24h > 0 else 0.0
-            spot_volume_24h_billion = spot_24h / 1e9 if spot_24h > 0 else 0.0
-            
-            total_liq_24h_million = total_liq_24h / 1e6 if total_liq_24h > 0 else 0.0
-            long_liq_24h_million = long_liq_24h / 1e6 if long_liq_24h > 0 else 0.0
-            short_liq_24h_million = short_liq_24h / 1e6 if short_liq_24h > 0 else 0.0
-            
-            # Format support/resistance levels
-            support_str = ', '.join([f'{x:.2f}' for x in support_levels])
-            resistance_str = ', '.join([f'{x:.2f}' for x in resistance_levels])
-            
-            # Build the standardized message
-            message = f"""[RAW DATA - {symbol} - REAL PRICE MULTI-TF]
-
-Info Umum
-Symbol : {symbol}
-Timeframe : 1H
-Timestamp : {timestamp}
-Last Price: {last_price:.4f}
-Mark Price: {mark_price:.4f}
-Price Source: coinglass_futures
-
-Price Change
-1H : {change_1h:+.2f}%
-4H : {change_4h:+.2f}%
-24H : {change_24h:+.2f}%
-High/Low 24H: ${low_24h:.4f} / ${high_24h:.4f}
-High/Low 7D : ${low_7d:.4f} / ${high_7d:.4f}
-
-Open Interest
-Total OI : ${total_oi_billion:.2f}B
-OI 1H : {oi_change_1h:+.1f}%
-OI 24H : {oi_change_24h:+.1f}%
-
-OI per Exchange
-Binance : ${oi_binance_billion:.2f}B
-Bybit : ${oi_bybit_billion:.2f}B
-OKX : ${oi_okx_billion:.2f}B
-Others : ${oi_others_billion:.2f}B
-
-Volume
-Futures 24H: ${futures_volume_24h_billion:.2f}B
-Perp 24H : ${perp_volume_24h_billion:.2f}B
-Spot 24H : ${spot_volume_24h_billion:.2f}B
-
-Funding
-Current Funding: {current_funding:+.4f}%
-Next Funding : {next_funding}
-Funding History:
-{funding_history_text}
-
-Liquidations
-Total 24H : ${total_liq_24h_million:.2f}M
-Long Liq : ${long_liq_24h_million:.2f}M
-Short Liq : ${short_liq_24h_million:.2f}M
-
-Long/Short Ratio
-Account Ratio (Global) : {account_ratio_global:.2f}
-Position Ratio (Global): {position_ratio_global:.2f}
-By Exchange:
-Binance: {ls_binance:.2f}
-Bybit : {ls_bybit:.2f}
-OKX : {ls_okx:.2f}
-
-Taker Flow Multi-Timeframe (CVD Proxy)
-5M: Buy ${buy_5m:.0f}M | Sell ${sell_5m:.0f}M | Net ${net_5m:+.0f}M
-15M: Buy ${buy_15m:.0f}M | Sell ${sell_15m:.0f}M | Net ${net_15m:+.0f}M
-1H: Buy ${buy_1h:.0f}M | Sell ${sell_1h:.0f}M | Net ${net_1h:+.0f}M
-4H: Buy ${buy_4h:.0f}M | Sell ${sell_4h:.0f}M | Net ${net_4h:+.0f}M
-
-RSI Multi-Timeframe (14)
-5M : {rsi_5m:.2f}
-15M: {rsi_15m:.2f}
-1H : {rsi_1h:.2f}
-4H : {rsi_4h:.2f}
-
-CG Levels
-Support : ${support_str}
-Resistance: ${resistance_str}"""
-            
-            return message
-            
-        except Exception as e:
-            logger.error(f"[RAW_DATA] Error formatting standardized data: {e}")
-            return f"❌ Error formatting standardized market data for {safe_get(data, 'symbol', 'UNKNOWN')}"
-
-    def _format_raw_market_data(self, data: Dict[str, Any]) -> str:
-        """Format raw market data for Telegram display"""
-        try:
-            symbol = data.get("symbol", "UNKNOWN")
-            timestamp = data.get("timestamp", "")
-            
-            # Price section
-            price_data = data.get("price", {})
-            price_section = ""
-            if price_data:
-                last_price = price_data.get("last_price", 0)
-                price_change_1h = price_data.get("price_change_1h", 0)
-                price_change_24h = price_data.get("price_change_24h", 0)
-                volume_24h = price_data.get("volume_24h", 0)
-                
-                price_emoji = "🟢" if price_change_24h >= 0 else "🔴"
-                price_section = (
-                    f"{price_emoji} *{symbol} Market Data*\n\n"
-                    f"💲 *Price & Changes:*\n"
-                    f"   Current: ${last_price:,.4f}\n"
-                    f"   1h: {price_change_1h:+.2f}%\n"
-                    f"   24h: {price_change_24h:+.2f}%\n"
-                    f"   Volume 24h: ${volume_24h:,.0f}\n\n"
-                )
-            
-            # Open Interest section
-            oi_data = data.get("open_interest", {})
-            oi_section = ""
-            if oi_data and oi_data.get("total", 0) > 0:
-                total_oi = oi_data.get("total", 0)
-                exchange_count = oi_data.get("exchange_count", 0)
-                oi_section = (
-                    f"📊 *Open Interest:*\n"
-                    f"   Total: ${total_oi:,.0f}\n"
-                    f"   Exchanges: {exchange_count}\n\n"
-                )
-            
-            # Funding Rate section
-            funding_data = data.get("funding", {})
-            funding_section = ""
-            if funding_data and funding_data.get("exchange_count", 0) > 0:
-                avg_rate = funding_data.get("current_average", 0)
-                avg_percentage = funding_data.get("current_percentage", 0)
-                exchange_count = funding_data.get("exchange_count", 0)
-                
-                funding_emoji = "🟢" if avg_rate >= 0 else "🔴"
-                funding_section = (
-                    f"{funding_emoji} *Funding Rate:*\n"
-                    f"   Average: {avg_percentage:+.4f}%\n"
-                    f"   Exchanges: {exchange_count}\n\n"
-                )
-            
-            # Liquidations section
-            liq_data = data.get("liquidations", {})
-            liq_section = ""
-            if liq_data and liq_data.get("total_24h", 0) > 0:
-                total_liq = liq_data.get("total_24h", 0)
-                long_liq = liq_data.get("long_24h", 0)
-                short_liq = liq_data.get("short_24h", 0)
-                exchange_count = liq_data.get("exchange_count", 0)
-                
-                liq_section = (
-                    f"📉 *Liquidations (24h):*\n"
-                    f"   Total: ${total_liq:,.0f}\n"
-                    f"   Longs: ${long_liq:,.0f}\n"
-                    f"   Shorts: ${short_liq:,.0f}\n"
-                    f"   Exchanges: {exchange_count}\n\n"
-                )
-            
-            # Long/Short Ratio section
-            ls_data = data.get("long_short_ratio", {})
-            ls_section = ""
-            if ls_data and ls_data.get("account_ratio", 0) > 0:
-                account_ratio = ls_data.get("account_ratio", 0)
-                position_ratio = ls_data.get("position_ratio", 0)
-                exchange = ls_data.get("exchange", "unknown")
-                
-                # Interpret the ratio
-                if account_ratio > 0.6:
-                    ls_emoji = "🟢"  # More longs
-                    bias = "Long Bias"
-                elif account_ratio < 0.4:
-                    ls_emoji = "🔴"  # More shorts
-                    bias = "Short Bias"
-                else:
-                    ls_emoji = "⚪"  # Balanced
-                    bias = "Balanced"
-                
-                ls_section = (
-                    f"{ls_emoji} *Long/Short Ratio ({exchange}):*\n"
-                    f"   Account Ratio: {account_ratio:.3f} ({bias})\n"
-                    f"   Position Ratio: {position_ratio:.3f}\n\n"
-                )
-            
-            # Combine all sections
-            message = price_section + oi_section + funding_section + liq_section + ls_section
-            
-            # Add footer
-            message += f"🕐 Data: {timestamp}\n"
-            message += "⚡ Powered by CoinGlass API v4 (Standard Tier)"
-            
-            return message
-            
-        except Exception as e:
-            logger.error(f"[RAW_DATA] Error formatting market data: {e}")
-            return f"❌ Error formatting market data for {data.get('symbol', 'UNKNOWN')}"
-
     @require_access
     async def handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle callback queries from inline keyboards"""
@@ -1306,7 +930,7 @@ Resistance: ${resistance_str}"""
         )
 
     async def broadcast_alert(self, message: str):
-        """Broadcast alert to the alert channel"""
+        """Broadcast alert to alert channel"""
         if not self.alert_channel_id or not settings.ENABLE_BROADCAST_ALERTS:
             return
 
@@ -1319,48 +943,24 @@ Resistance: ${resistance_str}"""
             logger.error(f"Failed to broadcast alert: {e}")
 
     async def start(self):
-        """Start the bot with polling"""
+        """Start bot with polling - pure async without manual event loop"""
         if not self.application:
             raise RuntimeError("Bot not initialized. Call initialize() first.")
 
         logger.info("Starting CryptoSat Telegram bot...")
         
-        # Start polling with proper error handling
+        # Start polling with proper error handling - NO manual event loop
         try:
-            await self.application.run_polling(
-                drop_pending_updates=True,
-                allowed_updates=None,
-                timeout=10,
-                read_timeout=5,
-                write_timeout=5,
-                connect_timeout=5,
-                pool_timeout=1
+            await self.application.initialize()
+            await self.application.start()
+            await self.application.updater.start_polling(
+                drop_pending_updates=True
             )
             logger.info("CryptoSat bot started successfully with polling enabled")
             
         except Exception as e:
             logger.error(f"Failed to start polling: {e}")
-            # Try cleanup and restart once
-            try:
-                await self.application.bot.delete_webhook(drop_pending_updates=True)
-                logger.info("Webhook cleanup performed during error recovery")
-                await asyncio.sleep(2)
-                
-                # Retry once
-                await self.application.run_polling(
-                    drop_pending_updates=True,
-                    allowed_updates=None,
-                    timeout=10,
-                    read_timeout=5,
-                    write_timeout=5,
-                    connect_timeout=5,
-                    pool_timeout=1
-                )
-                logger.info("CryptoSat bot started successfully after retry")
-                
-            except Exception as retry_e:
-                logger.error(f"Bot startup failed completely: {retry_e}")
-                raise
+            raise
 
     async def stop(self):
         """Stop the bot"""
@@ -1369,7 +969,7 @@ Resistance: ${resistance_str}"""
             if hasattr(self.application, 'updater') and self.application.updater:
                 await self.application.updater.stop()
             
-            # Stop the application
+            # Stop application
             await self.application.stop()
             logger.info("CryptoSat bot stopped")
 
