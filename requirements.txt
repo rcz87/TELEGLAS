@@ -3,9 +3,8 @@ python-dotenv==1.0.0
 requests==2.31.0
 aiohttp==3.9.1
 
-# Telegram Bot
-python-telegram-bot==20.7
-aiogram==3.4.1
+# Telegram Bot - Use latest stable version with ApplicationBuilder
+python-telegram-bot>=20.7,<22.0
 
 # Database
 redis==5.0.1
@@ -20,9 +19,9 @@ numpy==1.24.3
 # Logging & Monitoring
 loguru==0.7.2
 
-# Testing
+# Testing (development only, can be removed in production)
 pytest==7.4.3
 pytest-asyncio==0.21.1
 
-# Deployment
+# Deployment (development only, can be removed in production)
 docker==6.1.3

@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from loguru import logger
-from services.coinglass import CoinGlassAPI, safe_float, safe_int, safe_get, safe_list_get
+from services.coinglass_api import CoinGlassAPI, safe_float, safe_int, safe_get, safe_list_get
 from core.database import db_manager
 from config.settings import settings
 

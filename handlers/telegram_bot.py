@@ -1324,38 +1324,30 @@ Resistance: ${resistance_str}"""
             raise RuntimeError("Bot not initialized. Call initialize() first.")
 
         logger.info("Starting CryptoSat Telegram bot...")
-        await self.application.initialize()
         
-        # Aggressive cleanup before starting
-        logger.info("Performing aggressive webhook cleanup...")
+        # Start polling with proper error handling
         try:
-            # Delete any existing webhook
-            await self.application.bot.delete_webhook(drop_pending_updates=True)
-            logger.info("Webhook deleted successfully")
+            await self.application.run_polling(
+                drop_pending_updates=True,
+                allowed_updates=None,
+                timeout=10,
+                read_timeout=5,
+                write_timeout=5,
+                connect_timeout=5,
+                pool_timeout=1
+            )
+            logger.info("CryptoSat bot started successfully with polling enabled")
             
-            # Get webhook info to confirm it's cleared
-            webhook_info = await self.application.bot.get_webhook_info()
-            if webhook_info.url:
-                logger.warning(f"Webhook still active: {webhook_info.url}")
-                # Force delete again
-                await self.application.bot.delete_webhook(drop_pending_updates=True)
-                await asyncio.sleep(2)  # Wait for cleanup
-            else:
-                logger.info("Webhook confirmed cleared")
-                
         except Exception as e:
-            logger.warning(f"Webhook cleanup failed: {e}")
-        
-        await self.application.start()
-        
-        # Start polling with aggressive conflict resolution
-        max_retries = 3
-        retry_delay = 5
-        
-        for attempt in range(max_retries):
+            logger.error(f"Failed to start polling: {e}")
+            # Try cleanup and restart once
             try:
-                logger.info(f"Starting polling attempt {attempt + 1}/{max_retries}")
-                await self.application.updater.start_polling(
+                await self.application.bot.delete_webhook(drop_pending_updates=True)
+                logger.info("Webhook cleanup performed during error recovery")
+                await asyncio.sleep(2)
+                
+                # Retry once
+                await self.application.run_polling(
                     drop_pending_updates=True,
                     allowed_updates=None,
                     timeout=10,
@@ -1364,25 +1356,11 @@ Resistance: ${resistance_str}"""
                     connect_timeout=5,
                     pool_timeout=1
                 )
-                logger.info("CryptoSat bot started successfully with polling enabled")
-                return  # Success, exit the retry loop
+                logger.info("CryptoSat bot started successfully after retry")
                 
-            except Exception as e:
-                logger.error(f"Polling attempt {attempt + 1} failed: {e}")
-                
-                if attempt < max_retries - 1:
-                    logger.info(f"Retrying in {retry_delay} seconds...")
-                    await asyncio.sleep(retry_delay)
-                    
-                    # Additional cleanup between retries
-                    try:
-                        await self.application.bot.delete_webhook(drop_pending_updates=True)
-                        logger.info("Additional webhook cleanup performed")
-                    except Exception as cleanup_e:
-                        logger.warning(f"Additional cleanup failed: {cleanup_e}")
-                else:
-                    logger.error("All polling attempts failed")
-                    raise
+            except Exception as retry_e:
+                logger.error(f"Bot startup failed completely: {retry_e}")
+                raise
 
     async def stop(self):
         """Stop the bot"""

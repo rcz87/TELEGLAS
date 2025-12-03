@@ -10,6 +10,8 @@ from services.coinglass_api import (
     safe_get,
     safe_list_get,
     RateLimitInfo,
+    SymbolNotSupported,
+    RawDataUnavailable,
 )
 
 # Re-export everything for backwards compatibility
@@ -21,4 +23,6 @@ __all__ = [
     "safe_get",
     "safe_list_get",
     "RateLimitInfo",
+    "SymbolNotSupported",
+    "RawDataUnavailable",
 ]

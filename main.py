@@ -193,8 +193,14 @@ class CryptoSatBot:
             logger.info("[SCHEDULER] Scheduler started")
 
             # Start Telegram bot in background (non-blocking)
-            telegram_task = asyncio.create_task(telegram_bot.start())
-            self.monitoring_tasks.append(telegram_task)
+            # Use create_task with proper error handling
+            try:
+                telegram_task = asyncio.create_task(telegram_bot.start())
+                self.monitoring_tasks.append(telegram_task)
+                logger.info("[OK] Telegram bot task created successfully")
+            except Exception as e:
+                logger.error(f"[ERROR] Failed to create Telegram bot task: {e}")
+                raise
 
             # Set running state
             self.running = True
