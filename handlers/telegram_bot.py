@@ -224,7 +224,7 @@ class TelegramBot:
             "⚡ Powered by CoinGlass API v4"
         )
 
-        await update.message.reply_text(welcome_message, parse_mode="MarkdownV2")
+        await update.message.reply_text(welcome_message, parse_mode="Markdown")
 
     @require_access
     async def handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
