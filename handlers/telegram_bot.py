@@ -892,7 +892,7 @@ class TelegramBot:
             
             # Funding data
             funding = safe_get(data, 'funding', {})
-            current_funding = safe_float(safe_get(funding, 'current_funding'), 0.0)
+            current_funding = safe_float(safe_get(funding, 'current_funding'))
             next_funding = safe_get(funding, 'next_funding', 'N/A')
             funding_history = safe_get(funding, 'funding_history', [])
             
@@ -904,12 +904,12 @@ class TelegramBot:
             
             # Long/Short ratio data
             ls_ratio = safe_get(data, 'long_short_ratio', {})
-            account_ratio_global = safe_float(safe_get(ls_ratio, 'account_ratio_global'), 1.0)
-            position_ratio_global = safe_float(safe_get(ls_ratio, 'position_ratio_global'), 1.0)
+            account_ratio_global = safe_get(ls_ratio, 'account_ratio_global')
+            position_ratio_global = safe_get(ls_ratio, 'position_ratio_global')
             ls_by_exchange = safe_get(ls_ratio, 'by_exchange', {})
-            ls_binance = safe_float(safe_get(ls_by_exchange, 'Binance'), 1.0)
-            ls_bybit = safe_float(safe_get(ls_by_exchange, 'Bybit'), 1.0)
-            ls_okx = safe_float(safe_get(ls_by_exchange, 'OKX'), 1.0)
+            ls_binance = safe_get(ls_by_exchange, 'Binance')
+            ls_bybit = safe_get(ls_by_exchange, 'Bybit')
+            ls_okx = safe_get(ls_by_exchange, 'OKX')
             
             # Taker Flow data
             taker_flow = safe_get(data, 'taker_flow', {})
@@ -947,6 +947,14 @@ class TelegramBot:
             # Helper function to format RSI values
             def format_rsi(value):
                 return f"{value:.2f}" if value is not None else "N/A"
+            
+            # Helper function to format long/short ratio
+            def format_ls_ratio(value):
+                return f"{value:.2f}" if value is not None else "N/A"
+            
+            # Helper function to format funding rate
+            def format_funding_rate(value):
+                return f"{value:+.4f}%" if value is not None else "N/A"
             
             # Helper function to format taker flow values
             def format_taker_flow(tf_data):
@@ -1007,7 +1015,7 @@ Perp 24H : {perp_volume_24h_billion:.2f}B
 Spot 24H : {spot_volume_text}
 
 Funding
-Current Funding: {current_funding:+.4f}%
+Current Funding: {format_funding_rate(current_funding)}
 Next Funding : {next_funding}
 Funding History:
 {funding_history_text}
@@ -1018,12 +1026,12 @@ Long Liq : {long_liq_24h_million:.2f}M
 Short Liq : {short_liq_24h_million:.2f}M
 
 Long/Short Ratio
-Account Ratio (Global) : {account_ratio_global:.2f}
-Position Ratio (Global): {position_ratio_global:.2f}
+Account Ratio (Global) : {format_ls_ratio(account_ratio_global)}
+Position Ratio (Global): {format_ls_ratio(position_ratio_global)}
 By Exchange:
-Binance: {ls_binance:.2f}
-Bybit : {ls_bybit:.2f}
-OKX : {ls_okx:.2f}
+Binance: {format_ls_ratio(ls_binance)}
+Bybit : {format_ls_ratio(ls_bybit)}
+OKX : {format_ls_ratio(ls_okx)}
 
 Taker Flow Multi-Timeframe (CVD Proxy)
 5M: {format_taker_flow(tf_5m)}

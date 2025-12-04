@@ -88,6 +88,15 @@ class RawDataService:
                     "cg_levels": self._extract_levels_data(levels_data)
                 }
                 
+                # DEBUG LOGGING: Log key values for VPS validation
+                logger.info(f"[DEBUG] RAW RSI values for {resolved_symbol}: 1h={rsi_1h_4h_1d_data.get('1h')}, 4h={rsi_1h_4h_1d_data.get('4h')}, 1d={rsi_1h_4h_1d_data.get('1d')}")
+                
+                funding_value = safe_get(raw, "funding", {}).get("current_funding")
+                logger.info(f"[DEBUG] RAW Funding for {resolved_symbol}: {funding_value}")
+                
+                ls_structure = safe_get(raw, "long_short_ratio", {})
+                logger.info(f"[DEBUG] RAW Long/Short for {resolved_symbol}: {ls_structure}")
+                
                 logger.info(f"[RAW] Successfully aggregated data for {resolved_symbol}")
                 return raw
                 
@@ -456,16 +465,16 @@ class RawDataService:
     
     def _extract_funding_data(self, funding_data: Dict, funding_history_data: Dict) -> Dict[str, Any]:
         """Extract funding rate data using new get_current_funding_rate endpoint"""
-        current_funding = 0.0
+        current_funding = None  # Default to None instead of 0.0
         next_funding = "N/A"  # Default to N/A instead of hardcoded time
         
         # Try to get current funding rate from new get_current_funding_rate endpoint
-        if funding_data and isinstance(funding_data, dict):
+        if funding_data is not None:
             # The new get_current_funding_rate returns float directly, not dict with "success" field
-            if isinstance(funding_data, (int, float)):
+            if isinstance(funding_data, (int, float)) and funding_data != 0:
                 current_funding = float(funding_data)  # Direct float from new endpoint
                 logger.info(f"[RAW] Current funding rate from new endpoint: {current_funding:.4f}%")
-            elif funding_data.get("success"):
+            elif isinstance(funding_data, dict) and funding_data.get("success"):
                 data = safe_get(funding_data, "data", [])
                 if data:
                     latest = data[0]  # Get most recent
@@ -475,8 +484,9 @@ class RawDataService:
                                safe_float(safe_get(latest, "rate")) or 
                                safe_float(safe_get(latest, "avgFundingRate")) or
                                safe_float(safe_get(latest, "funding_rate")) or 0.0)
-                        current_funding = rate * 100.0  # Convert to percentage
-                        logger.info(f"[RAW] Current funding rate from fallback: {current_funding:.4f}%")
+                        if rate != 0.0:  # Only use if non-zero
+                            current_funding = rate * 100.0  # Convert to percentage
+                            logger.info(f"[RAW] Current funding rate from fallback: {current_funding:.4f}%")
         
         funding_history = []
         if funding_history_data and funding_history_data.get("success"):
@@ -518,36 +528,45 @@ class RawDataService:
         """Extract long/short ratio data"""
         if not ls_data or not ls_data.get("success"):
             return {
-                "account_ratio_global": 1.0,
-                "position_ratio_global": 1.0,
-                "by_exchange": {"Binance": 1.0, "Bybit": 1.0, "OKX": 1.0}
+                "account_ratio_global": None,
+                "position_ratio_global": None,
+                "by_exchange": {"Binance": None, "Bybit": None, "OKX": None}
             }
         
         data = safe_get(ls_data, "data", [])
         if not data:
             return {
-                "account_ratio_global": 1.0,
-                "position_ratio_global": 1.0,
-                "by_exchange": {"Binance": 1.0, "Bybit": 1.0, "OKX": 1.0}
+                "account_ratio_global": None,
+                "position_ratio_global": None,
+                "by_exchange": {"Binance": None, "Bybit": None, "OKX": None}
             }
         
         # Get most recent data
         latest = data[-1] if data else {}
         if isinstance(latest, dict):
+            account_ratio = safe_float(safe_get(latest, "longShortRatio"))
+            position_ratio = safe_float(safe_get(latest, "positionLongShortRatio"))
+            
+            # If values are 0.0 (default from safe_float), treat as missing data
+            if account_ratio == 0.0:
+                account_ratio = None
+            if position_ratio == 0.0:
+                position_ratio = None
+            
             return {
-                "account_ratio_global": safe_float(safe_get(latest, "longShortRatio")),
-                "position_ratio_global": safe_float(safe_get(latest, "positionLongShortRatio")),
+                "account_ratio_global": account_ratio,
+                "position_ratio_global": position_ratio,
                 "by_exchange": {
-                    "Binance": safe_float(safe_get(latest, "longShortRatio")),
-                    "Bybit": 1.0,  # Would need separate calls
-                    "OKX": 1.0     # Would need separate calls
+                    "Binance": account_ratio,
+                    "Bybit": None,  # Would need separate calls
+                    "OKX": None     # Would need separate calls
                 }
             }
         
         return {
-            "account_ratio_global": 1.0,
-            "position_ratio_global": 1.0,
-            "by_exchange": {"Binance": 1.0, "Bybit": 1.0, "OKX": 1.0}
+            "account_ratio_global": None,
+            "position_ratio_global": None,
+            "by_exchange": {"Binance": None, "Bybit": None, "OKX": None}
         }
     
     def _extract_taker_flow_data(self, taker_data: Dict) -> Dict[str, Any]:
@@ -794,6 +813,14 @@ class RawDataService:
         # Format spot volume
         spot_volume_text = f"{spot24h_b:.2f}B" if spot24h is not None else "N/A"
         
+        # Helper function to format funding rate
+        def format_funding_rate(value):
+            return f"{value:+.4f}%" if value is not None else "N/A"
+        
+        # Helper function to format long/short ratio
+        def format_ls_ratio(value):
+            return f"{value:.2f}" if value is not None else "N/A"
+        
         # Format funding history properly
         funding_history_text = format_funding_history(funding_history)
         
@@ -832,7 +859,7 @@ Perp 24H : {perp24h_b:.2f}B
 Spot 24H : {spot_volume_text}
 
 Funding
-Current Funding: {current_funding:+.4f}%
+Current Funding: {format_funding_rate(current_funding)}
 Next Funding : {next_funding}
 Funding History:
 {funding_history_text}
@@ -843,12 +870,12 @@ Long Liq : {liq_long_m:.2f}M
 Short Liq : {liq_short_m:.2f}M
 
 Long/Short Ratio
-Account Ratio (Global) : {account_ratio:.2f}
-Position Ratio (Global): {position_ratio:.2f}
+Account Ratio (Global) : {format_ls_ratio(account_ratio)}
+Position Ratio (Global): {format_ls_ratio(position_ratio)}
 By Exchange:
-Binance: {ls_binance:.2f}
-Bybit : {ls_bybit:.2f}
-OKX : {ls_okx:.2f}
+Binance: {format_ls_ratio(ls_binance)}
+Bybit : {format_ls_ratio(ls_bybit)}
+OKX : {format_ls_ratio(ls_okx)}
 
 Taker Flow Multi-Timeframe (CVD Proxy)
 5M: {format_taker_flow(tf_5m)}

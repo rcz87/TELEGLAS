@@ -997,8 +997,8 @@ class CoinGlassAPI:
 
         resp = await self._make_request(path, params)
 
-        if not resp or resp.get("code") != "0":
-            logger.warning("[RSI] Failed to fetch RSI for %s %s: %s", cg_symbol, interval, resp)
+        if not resp or not resp.get("success"):
+            logger.warning("[RSI] Failed to fetch RSI for %s %s: %s", cg_symbol, interval, resp.get("error", "Unknown error"))
             return None
 
         data = resp.get("data") or []
@@ -1008,7 +1008,7 @@ class CoinGlassAPI:
 
         last = data[-1]
         try:
-            return float(last["rsi_value"])
+            return float(last["rsi"])
         except Exception as e:
             logger.warning("[RSI] Failed to parse RSI value for %s %s: %s", cg_symbol, interval, e)
             return None
@@ -1037,8 +1037,8 @@ class CoinGlassAPI:
 
         resp = await self._make_request(path, params)
 
-        if not resp or resp.get("code") != "0":
-            logger.warning("[FUNDING] Failed to fetch funding for %s: %s", cg_symbol, resp)
+        if not resp or not resp.get("success"):
+            logger.warning("[FUNDING] Failed to fetch funding for %s: %s", cg_symbol, resp.get("error", "Unknown error"))
             return None
 
         data = resp.get("data") or []
@@ -1696,19 +1696,42 @@ class CoinGlassAPI:
             
             if not result.get("success"):
                 logger.warning(f"[RAW_DATA] Failed to get L/S ratio for {symbol}: {result.get('error')}")
-                return {}
+                return {
+                    "account_ratio": None,
+                    "position_ratio": None,
+                    "exchange": "binance",
+                    "error": result.get('error')
+                }
             
             data = result.get("data", [])
             if not isinstance(data, list) or not data:
-                return {}
+                logger.warning(f"[RAW_DATA] Empty L/S ratio data for {symbol}")
+                return {
+                    "account_ratio": None,
+                    "position_ratio": None,
+                    "exchange": "binance",
+                    "error": "No data available"
+                }
             
             # Get most recent data
             latest = data[-1] if data else None
             if not isinstance(latest, dict):
-                return {}
+                logger.warning(f"[RAW_DATA] Invalid L/S ratio data format for {symbol}")
+                return {
+                    "account_ratio": None,
+                    "position_ratio": None,
+                    "exchange": "binance",
+                    "error": "Invalid data format"
+                }
             
             account_ratio = safe_float(latest.get("longShortRatio"))
             position_ratio = safe_float(latest.get("positionLongShortRatio"))
+            
+            # If values are 0.0 (default from safe_float), treat as missing data
+            if account_ratio == 0.0:
+                account_ratio = None
+            if position_ratio == 0.0:
+                position_ratio = None
             
             return {
                 "account_ratio": account_ratio,
@@ -1718,7 +1741,12 @@ class CoinGlassAPI:
             
         except Exception as e:
             logger.error(f"[RAW_DATA] Error getting L/S ratio for {symbol}: {e}")
-            return {}
+            return {
+                "account_ratio": None,
+                "position_ratio": None,
+                "exchange": "binance",
+                "error": str(e)
+            }
 
     async def get_raw_market_snapshot(self, symbol: str) -> Dict[str, Any]:
         """
