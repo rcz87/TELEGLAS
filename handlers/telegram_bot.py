@@ -1050,18 +1050,37 @@ CG Levels
 
         logger.info("Starting CryptoSat Telegram bot...")
         
-        # Start polling with proper error handling - NO manual event loop
+        # Initialize application first (outside retry loop)
         try:
             await self.application.initialize()
             await self.application.start()
-            await self.application.updater.start_polling(
-                drop_pending_updates=True
-            )
-            logger.info("CryptoSat bot started successfully with polling enabled")
-            
         except Exception as e:
-            logger.error(f"Failed to start polling: {e}")
+            logger.error(f"Failed to initialize application: {e}")
             raise
+        
+        # Add retry mechanism for start_polling
+        from telegram.error import NetworkError, TimedOut, RetryAfter
+        max_retries = 5
+        
+        for i in range(max_retries):
+            try:
+                logger.info(f"[TELEGRAM] Starting polling attempt {i+1}/{max_retries}")
+                await self.application.updater.start_polling(
+                    drop_pending_updates=True
+                )
+                logger.info("CryptoSat bot started successfully with polling enabled")
+                return
+                
+            except (NetworkError, TimedOut, RetryAfter) as e:
+                logger.warning(f"[TELEGRAM] Polling failed: {e}, retrying {i+1}/{max_retries}")
+                if i < max_retries - 1:  # Don't sleep on last attempt
+                    await asyncio.sleep(5)  # Delay 5 seconds between retries
+            except Exception as e:
+                logger.error(f"[TELEGRAM] Unexpected polling error: {e}")
+                raise
+        
+        logger.error("[TELEGRAM] Polling failed after max retry attempts")
+        raise Exception("Polling failed after retry")
 
     async def stop(self):
         """Stop the bot"""
