@@ -670,7 +670,7 @@ class RawDataService:
         resistance = safe_get(levels, 'resistance')
         
         # Format with proper units
-        oi_total_b = oi_total / 1e9 if oi_total > 0 else 0.0
+        oi_total_b = total_oi / 1e9 if total_oi > 0 else 0.0
         oi_binance_b = safe_float(safe_get(per_exchange, 'Binance')) / 1e9
         oi_bybit_b = safe_float(safe_get(per_exchange, 'Bybit')) / 1e9
         oi_okx_b = safe_float(safe_get(per_exchange, 'OKX')) / 1e9
