@@ -976,10 +976,48 @@ class TelegramBot:
             
             # Format spot volume
             spot_volume_text = f"{spot_volume_24h_billion:.2f}B" if spot_24h is not None else "N/A"
-            
-            # Format funding history
-            funding_history_text = 'No history available' if not funding_history else f'{len(funding_history)} entries'
-            
+
+            # Format funding history with details
+            def format_funding_history_details(history_data):
+                """Format funding history with rate and timestamp details"""
+                if not history_data or not isinstance(history_data, list):
+                    return "No history available"
+
+                history_lines = []
+                for i, entry in enumerate(history_data[:5], 1):  # Show last 5 entries
+                    if isinstance(entry, dict):
+                        # Extract funding rate - try multiple field names
+                        rate = (safe_float(safe_get(entry, "fundingRate")) or
+                               safe_float(safe_get(entry, "rate")) or
+                               safe_float(safe_get(entry, "avgFundingRate")) or
+                               safe_float(safe_get(entry, "funding_rate")) or 0.0)
+
+                        # Extract timestamp - try multiple field names
+                        timestamp = (safe_get(entry, "createTime") or
+                                   safe_get(entry, "timestamp") or
+                                   safe_get(entry, "time") or
+                                   safe_get(entry, "createTimeUtc") or "Unknown")
+
+                        # Format timestamp to be more readable if it's a number
+                        if timestamp and timestamp != "Unknown":
+                            try:
+                                if isinstance(timestamp, (int, float)):
+                                    from datetime import datetime
+                                    dt = datetime.fromtimestamp(timestamp / 1000)  # Convert ms to seconds
+                                    timestamp = dt.strftime("%m-%d %H:%M")  # Short format: MM-DD HH:MM
+                            except:
+                                pass  # Keep original if conversion fails
+
+                        # Format rate as percentage
+                        rate_pct = rate * 100.0 if rate < 1 else rate  # Convert decimal to percentage if needed
+                        history_lines.append(f"  {timestamp}: {rate_pct:+.4f}%")
+                    else:
+                        history_lines.append(f"  Entry {i}: Invalid format")
+
+                return "\n".join(history_lines) if history_lines else "No valid history data"
+
+            funding_history_text = format_funding_history_details(funding_history)
+
             # Build exact standardized message
             message = f"""[RAW DATA - {symbol} - REAL PRICE MULTI-TF]
 
