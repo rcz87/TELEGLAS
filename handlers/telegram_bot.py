@@ -21,6 +21,7 @@ from services.whale_watcher import whale_watcher
 from services.funding_rate_radar import funding_rate_radar
 from services.coinglass_api import coinglass_api
 from utils.auth import is_user_allowed, log_access_attempt, get_access_status_message
+from utils.formatters import build_raw_orderbook_text
 
 
 def require_access(func):
@@ -173,6 +174,7 @@ class TelegramBot:
         self.application.add_handler(CommandHandler("alerts_status", self.handle_alerts_status))
         self.application.add_handler(CommandHandler("alerts_on_w", self.handle_alerts_on_whale))
         self.application.add_handler(CommandHandler("alerts_off_w", self.handle_alerts_off_whale))
+        self.application.add_handler(CommandHandler("raw_orderbook", self.handle_raw_orderbook))
 
         # Callback query handler for inline keyboards
         self.application.add_handler(CallbackQueryHandler(self.handle_callback))
@@ -767,6 +769,71 @@ class TelegramBot:
                 f"Failed to fetch raw data for {args_raw}. Please try again later.",
                 parse_mode=None,
             )
+
+    @require_access
+    async def handle_raw_orderbook(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /raw_orderbook command - RAW orderbook analysis"""
+        # Extract symbol from command
+        args = context.args
+        if not args or len(args) == 0:
+            await update.message.reply_text("Usage: /raw_orderbook SYMBOL\nExample: /raw_orderbook BTC")
+            return
+        
+        symbol = args[0].upper()
+        
+        # Symbol mapping: BTC -> BTCUSDT for endpoints 1&2, BTC for endpoint 3
+        futures_pair = f"{symbol}USDT"
+        base_symbol = symbol
+        
+        # Send typing action
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+        
+        try:
+            # Fetch all 3 endpoints concurrently
+            async with coinglass_api:
+                tasks = [
+                    coinglass_api.get_orderbook_history("Binance", futures_pair, "1h", 1),
+                    coinglass_api.get_orderbook_ask_bids_history("Binance", futures_pair, "1d"),
+                    coinglass_api.get_aggregated_orderbook_ask_bids_history("Binance", base_symbol, "h1")
+                ]
+                
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                history_data = results[0] if not isinstance(results[0], Exception) else None
+                binance_depth_data = results[1] if not isinstance(results[1], Exception) else []
+                aggregated_depth_data = results[2] if not isinstance(results[2], Exception) else []
+                
+                # Check if any data was successfully fetched
+                if not (history_data or binance_depth_data or aggregated_depth_data):
+                    await update.message.reply_text(
+                        "❌ No orderbook data available for this symbol.\n\n"
+                        "Please try a major futures symbol like: BTC, ETH, SOL, etc."
+                    )
+                    return
+                
+                # Build combined report using formatter
+                formatted_message = build_raw_orderbook_text(
+                    symbol=futures_pair,
+                    history_data=history_data,
+                    binance_depth_data=binance_depth_data,
+                    aggregated_depth_data=aggregated_depth_data,
+                    exchange="Binance",
+                    ob_interval="1h",
+                    depth_range="1%"
+                )
+                
+                # Send response
+                if len(formatted_message) > 4000:  # Telegram message limit
+                    # Split into parts if too long
+                    parts = [formatted_message[i:i+4000] for i in range(0, len(formatted_message), 4000)]
+                    for part in parts:
+                        await update.message.reply_text(part)
+                else:
+                    await update.message.reply_text(formatted_message)
+                
+        except Exception as e:
+            logger.error(f"Error handling raw_orderbook command: {e}")
+            await update.message.reply_text("❌ An error occurred while processing your request. Please try again later.")
 
     def _format_standardized_raw_output(self, data: Dict[str, Any]) -> str:
         """Format comprehensive raw data according to the exact standardized layout"""

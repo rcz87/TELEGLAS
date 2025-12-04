@@ -1228,6 +1228,163 @@ class CoinGlassAPI:
             logger.error(f"[SYMBOL_RESOLVER] Error resolving symbol '{raw_symbol}': {e}")
             return None
 
+    # Orderbook Analysis Endpoints for RAW Orderbook Command
+
+    async def get_orderbook_history(
+        self,
+        exchange: str,
+        symbol: str,
+        interval: str = "1h",
+        limit: int = 1,
+    ) -> Optional[Any]:
+        """Get orderbook history - endpoint 1"""
+        try:
+            # Format symbol with USDT suffix for this endpoint
+            formatted_symbol = f"{symbol.upper()}USDT"
+            params = {
+                "exchange": exchange,
+                "symbol": formatted_symbol,
+                "interval": interval,
+                "limit": limit
+            }
+            result = await self._make_request("/api/futures/orderbook/history", params)
+            if result.get("success"):
+                return result.get("data", [])
+            else:
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/history reason: {result.get('error')}")
+                return None
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/history reason: {e}")
+            return None
+
+    async def get_orderbook_ask_bids_history(
+        self,
+        exchange: str,
+        symbol: str,
+        interval: str = "1d",
+        limit: int = 100,
+    ) -> Optional[List]:
+        """Get orderbook ask-bids history - endpoint 2"""
+        try:
+            # Format symbol with USDT suffix for this endpoint
+            formatted_symbol = f"{symbol.upper()}USDT"
+            params = {
+                "exchange": exchange,
+                "symbol": formatted_symbol,
+                "interval": interval,
+                "limit": limit
+            }
+            result = await self._make_request("/api/futures/orderbook/ask-bids-history", params)
+            if result.get("success"):
+                return result.get("data", [])
+            else:
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/ask-bids-history reason: {result.get('error')}")
+                return None
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/ask-bids-history reason: {e}")
+            return None
+
+    async def get_aggregated_orderbook_ask_bids_history(
+        self,
+        exchange_list: str,
+        symbol: str,
+        interval: str = "h1",
+        limit: int = 500,
+    ) -> Optional[List]:
+        """Get aggregated orderbook ask-bids history - endpoint 3"""
+        try:
+            # Use base symbol without USDT for this endpoint
+            base_symbol = symbol.upper().replace("USDT", "").replace("USD", "").replace("PERP", "")
+            params = {
+                "exchange_list": exchange_list,
+                "symbol": base_symbol,
+                "interval": interval,
+                "limit": limit
+            }
+            result = await self._make_request("/api/futures/orderbook/aggregated-ask-bids-history", params)
+            if result.get("success"):
+                return result.get("data", [])
+            else:
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/aggregated-ask-bids-history reason: {result.get('error')}")
+                return None
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/aggregated-ask-bids-history reason: {e}")
+            return None
+
+    async def get_orderbook_history_raw(
+        self,
+        symbol: str,
+        exchange: str = "Binance",
+        interval: str = "1h",
+        limit: int = 1,
+    ) -> Dict[str, Any]:
+        """Get orderbook history for RAW analysis - endpoint 1 (legacy method)"""
+        try:
+            # Format symbol with USDT suffix for this endpoint
+            formatted_symbol = f"{symbol.upper()}USDT"
+            params = {
+                "exchange": exchange,
+                "symbol": formatted_symbol,
+                "interval": interval,
+                "limit": limit
+            }
+            result = await self._make_request("/api/futures/orderbook/history", params)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/history reason: {result.get('error')}")
+                return {"success": False, "data": [], "error": result.get('error')}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/history reason: {e}")
+            return {"success": False, "data": [], "error": str(e)}
+
+    async def get_orderbook_ask_bids_history_raw(
+        self,
+        symbol: str,
+        exchange: str = "Binance",
+        interval: str = "1d",
+    ) -> Dict[str, Any]:
+        """Get orderbook ask-bids history for RAW analysis - endpoint 2 (legacy method)"""
+        try:
+            # Format symbol with USDT suffix for this endpoint
+            formatted_symbol = f"{symbol.upper()}USDT"
+            params = {
+                "exchange": exchange,
+                "symbol": formatted_symbol,
+                "interval": interval
+            }
+            result = await self._make_request("/api/futures/orderbook/ask-bids-history", params)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/ask-bids-history reason: {result.get('error')}")
+                return {"success": False, "data": [], "error": result.get('error')}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/ask-bids-history reason: {e}")
+            return {"success": False, "data": [], "error": str(e)}
+
+    async def get_orderbook_aggregated_ask_bids_history_raw(
+        self,
+        symbol: str,
+        exchange_list: str = "Binance",
+        interval: str = "h1",
+    ) -> Dict[str, Any]:
+        """Get aggregated orderbook ask-bids history for RAW analysis - endpoint3 (legacy method)"""
+        try:
+            # Use base symbol without USDT for this endpoint
+            base_symbol = symbol.upper().replace("USDT", "").replace("USD", "").replace("PERP", "")
+            params = {
+                "exchange_list": exchange_list,
+                "symbol": base_symbol,
+                "interval": interval
+            }
+            result = await self._make_request("/api/futures/orderbook/aggregated-ask-bids-history", params)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/aggregated-ask-bids-history reason: {result.get('error')}")
+                return {"success": False, "data": [], "error": result.get('error')}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/aggregated-ask-bids-history reason: {e}")
+            return {"success": False, "data": [], "error": str(e)}
+
     # Raw Data Aggregator - Tier-Safe Implementation
 
     def normalize_symbol(self, symbol: str) -> str:
