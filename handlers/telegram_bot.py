@@ -781,20 +781,19 @@ class TelegramBot:
         
         symbol = args[0].upper()
         
-        # Symbol mapping: BTC -> BTCUSDT for endpoints 1&2, BTC for endpoint 3
-        futures_pair = f"{symbol}USDT"
-        base_symbol = symbol
+        # Use the new symbol mapping helper
+        base_symbol, futures_pair = coinglass_api.resolve_orderbook_symbols(symbol)
         
         # Send typing action
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
         
         try:
-            # Fetch all 3 endpoints concurrently
+            # Fetch all 3 endpoints concurrently with CORRECT parameters
             async with coinglass_api:
                 tasks = [
-                    coinglass_api.get_orderbook_history("Binance", futures_pair, "1h", 1),
-                    coinglass_api.get_orderbook_ask_bids_history("Binance", futures_pair, "1d"),
-                    coinglass_api.get_aggregated_orderbook_ask_bids_history("Binance", base_symbol, "h1")
+                    coinglass_api.get_orderbook_history(base_symbol, futures_pair, "Binance", "1h", 1),
+                    coinglass_api.get_orderbook_ask_bids_history(base_symbol, futures_pair, "Binance", "1d", 100, "1"),
+                    coinglass_api.get_aggregated_orderbook_ask_bids_history(base_symbol, "Binance", "h1", 500)
                 ]
                 
                 results = await asyncio.gather(*tasks, return_exceptions=True)

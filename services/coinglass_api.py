@@ -1225,25 +1225,50 @@ class CoinGlassAPI:
             logger.error(f"[SYMBOL_RESOLVER] Error resolving symbol '{raw_symbol}': {e}")
             return None
 
+    def resolve_orderbook_symbols(self, symbol: str) -> tuple[str, str]:
+        """
+        Helper function to resolve symbols for orderbook endpoints
+        
+        Args:
+            symbol: User input symbol (e.g., "btc", "BTC", "BTCUSDT")
+            
+        Returns:
+            tuple: (base_symbol, futures_pair)
+                 - base_symbol: "BTC" (for aggregated endpoint)
+                 - futures_pair: "BTCUSDT" (for history and ask-bids endpoints)
+        """
+        s = symbol.upper()
+        if s.endswith("USDT") or s.endswith("USD"):
+            base = s.replace("USDT", "").replace("USD", "")
+            return base, s
+        return s, s + "USDT"
+
     # Orderbook Analysis Endpoints for RAW Orderbook Command
 
     async def get_orderbook_history(
         self,
-        exchange: str,
-        symbol: str,
+        base_symbol: str,
+        futures_pair: str,
+        exchange: str = "Binance",
         interval: str = "1h",
         limit: int = 1,
     ) -> Optional[Any]:
         """Get orderbook history - endpoint 1"""
         try:
-            # Format symbol with USDT suffix for this endpoint
-            formatted_symbol = f"{symbol.upper()}USDT"
+            # Use CORRECT params as specified in requirements
             params = {
                 "exchange": exchange,
-                "symbol": formatted_symbol,
+                "symbol": futures_pair,  # Use futures_pair (BTCUSDT)
                 "interval": interval,
                 "limit": limit
             }
+            
+            # DEBUG LOGGING
+            logger.warning(
+                "[DEBUG OB_HISTORY] base=%s pair=%s params=%s",
+                base_symbol, futures_pair, params
+            )
+            
             result = await self._make_request("/api/futures/orderbook/history", params)
             if result.get("success"):
                 return result.get("data", [])
@@ -1256,21 +1281,30 @@ class CoinGlassAPI:
 
     async def get_orderbook_ask_bids_history(
         self,
-        exchange: str,
-        symbol: str,
+        base_symbol: str,
+        futures_pair: str,
+        exchange: str = "Binance",
         interval: str = "1d",
         limit: int = 100,
+        range_param: str = "1"
     ) -> Optional[List]:
         """Get orderbook ask-bids history - endpoint 2"""
         try:
-            # Format symbol with USDT suffix for this endpoint
-            formatted_symbol = f"{symbol.upper()}USDT"
+            # Use CORRECT params as specified in requirements
             params = {
                 "exchange": exchange,
-                "symbol": formatted_symbol,
+                "symbol": futures_pair,  # Use futures_pair (BTCUSDT)
                 "interval": interval,
-                "limit": limit
+                "limit": limit,
+                "range": range_param  # Add range parameter
             }
+            
+            # DEBUG LOGGING
+            logger.warning(
+                "[DEBUG OB_ASK_BIDS] base=%s pair=%s params=%s",
+                base_symbol, futures_pair, params
+            )
+            
             result = await self._make_request("/api/futures/orderbook/ask-bids-history", params)
             if result.get("success"):
                 return result.get("data", [])
@@ -1283,21 +1317,27 @@ class CoinGlassAPI:
 
     async def get_aggregated_orderbook_ask_bids_history(
         self,
-        exchange_list: str,
-        symbol: str,
+        base_symbol: str,
+        exchange_list: str = "Binance",
         interval: str = "h1",
         limit: int = 500,
     ) -> Optional[List]:
         """Get aggregated orderbook ask-bids history - endpoint 3"""
         try:
-            # Use base symbol without USDT for this endpoint
-            base_symbol = symbol.upper().replace("USDT", "").replace("USD", "").replace("PERP", "")
+            # Use CORRECT params as specified in requirements
             params = {
                 "exchange_list": exchange_list,
-                "symbol": base_symbol,
+                "symbol": base_symbol,  # Use base_symbol (BTC)
                 "interval": interval,
                 "limit": limit
             }
+            
+            # DEBUG LOGGING
+            logger.warning(
+                "[DEBUG OB_AGG] base=%s params=%s",
+                base_symbol, params
+            )
+            
             result = await self._make_request("/api/futures/orderbook/aggregated-ask-bids-history", params)
             if result.get("success"):
                 return result.get("data", [])

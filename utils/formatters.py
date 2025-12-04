@@ -139,33 +139,39 @@ def build_raw_orderbook_text(
                         bids_amount = safe_float(period_data.get("bidsCt", period_data.get("bidsAmount", 0)))
                         asks_amount = safe_float(period_data.get("asksCt", period_data.get("asksAmount", 0)))
                         
-                        # Calculate pressure
-                        if asks_total > 0:
-                            pressure_pct = ((bids_total - asks_total) / asks_total) * 100
-                            if pressure_pct > 0.5:
-                                pressure_text = f"🟩 Long Dominant (+{pressure_pct:.1f}%)"
-                            elif pressure_pct < -0.5:
-                                pressure_text = f"🟥 Short Dominant ({pressure_pct:.1f}%)"
+                        # Only show data if we have real values (not zeros or None)
+                        if (bids_total is not None and bids_total > 0 and 
+                            asks_total is not None and asks_total > 0 and
+                            bids_amount is not None and bids_amount > 0 and
+                            asks_amount is not None and asks_amount > 0):
+                            
+                            # Calculate pressure
+                            if asks_total > 0:
+                                pressure_pct = ((bids_total - asks_total) / asks_total) * 100
+                                if pressure_pct > 0.5:
+                                    pressure_text = f"🟩 Long Dominant (+{pressure_pct:.1f}%)"
+                                elif pressure_pct < -0.5:
+                                    pressure_text = f"🟥 Short Dominant ({pressure_pct:.1f}%)"
+                                else:
+                                    pressure_text = "Neutral"
                             else:
                                 pressure_text = "Neutral"
-                        else:
-                            pressure_text = "Neutral"
-                        
-                        # Format USD values
-                        def format_usd(value):
-                            if value >= 1e6:
-                                return f"${value/1e6:,.2f}M"
-                            elif value >= 1e3:
-                                return f"${value/1e3:,.0f}K"
-                            else:
-                                return f"${value:,.2f}"
-                        
-                        lines.append(f"[Hari #{i+1}]")
-                        lines.append(f"• Waktu       : {time_str}")
-                        lines.append(f"• Bids (Long) : {format_usd(bids_total)}  | {bids_amount:.3f} BTC")
-                        lines.append(f"• Asks (Short): {format_usd(asks_total)}  | {asks_amount:.3f} BTC")
-                        lines.append(f"• Pressure    : {pressure_text}")
-                        lines.append("")
+                            
+                            # Format USD values
+                            def format_usd(value):
+                                if value >= 1e6:
+                                    return f"${value/1e6:,.2f}M"
+                                elif value >= 1e3:
+                                    return f"${value/1e3:,.0f}K"
+                                else:
+                                    return f"${value:,.2f}"
+                            
+                            lines.append(f"[Hari #{i+1}]")
+                            lines.append(f"• Waktu       : {time_str}")
+                            lines.append(f"• Bids (Long) : {format_usd(bids_total)}  | {bids_amount:.3f} BTC")
+                            lines.append(f"• Asks (Short): {format_usd(asks_total)}  | {asks_amount:.3f} BTC")
+                            lines.append(f"• Pressure    : {pressure_text}")
+                            lines.append("")
         else:
             lines.append("• No Binance depth data available")
             lines.append("")
@@ -177,7 +183,7 @@ def build_raw_orderbook_text(
         lines.append("3) Aggregated Orderbook Depth (Multi-Exchange) - 1H")
         lines.append("")
         
-        # Process aggregated depth data
+        # Process aggregated depth data - NO ZERO FALLBACKS
         if aggregated_depth_data and len(aggregated_depth_data) > 0:
             data_list = aggregated_depth_data
             if isinstance(data_list, list):
@@ -193,38 +199,44 @@ def build_raw_orderbook_text(
                         else:
                             time_str = "N/A"
                         
-                        agg_bids = safe_float(period_data.get("aggregatedBidsUsd", 0))
-                        agg_asks = safe_float(period_data.get("aggregatedAsksUsd", 0))
-                        agg_bids_amount = safe_float(period_data.get("aggregatedBidsCt", 0))
-                        agg_asks_amount = safe_float(period_data.get("aggregatedAsksCt", 0))
+                        agg_bids = safe_float(period_data.get("aggregatedBidsUsd"))
+                        agg_asks = safe_float(period_data.get("aggregatedAsksUsd"))
+                        agg_bids_amount = safe_float(period_data.get("aggregatedBidsCt"))
+                        agg_asks_amount = safe_float(period_data.get("aggregatedAsksCt"))
                         
-                        # Calculate pressure
-                        if agg_asks > 0:
-                            pressure_pct = ((agg_bids - agg_asks) / agg_asks) * 100
-                            if pressure_pct > 0.5:
-                                pressure_text = f"🟩 Long Dominant (+{pressure_pct:.1f}%)"
-                            elif pressure_pct < -0.5:
-                                pressure_text = f"🟥 Short Dominant ({pressure_pct:.1f}%)"
+                        # Only show data if we have real values (not zeros or None)
+                        if (agg_bids is not None and agg_bids > 0 and 
+                            agg_asks is not None and agg_asks > 0 and
+                            agg_bids_amount is not None and agg_bids_amount > 0 and
+                            agg_asks_amount is not None and agg_asks_amount > 0):
+                            
+                            # Calculate pressure
+                            if agg_asks > 0:
+                                pressure_pct = ((agg_bids - agg_asks) / agg_asks) * 100
+                                if pressure_pct > 0.5:
+                                    pressure_text = f"🟩 Long Dominant (+{pressure_pct:.1f}%)"
+                                elif pressure_pct < -0.5:
+                                    pressure_text = f"🟥 Short Dominant ({pressure_pct:.1f}%)"
+                                else:
+                                    pressure_text = "Neutral"
                             else:
                                 pressure_text = "Neutral"
-                        else:
-                            pressure_text = "Neutral"
-                        
-                        # Format USD values
-                        def format_usd(value):
-                            if value >= 1e6:
-                                return f"${value/1e6:,.2f}M"
-                            elif value >= 1e3:
-                                return f"${value/1e3:,.0f}K"
-                            else:
-                                return f"${value:,.2f}"
-                        
-                        lines.append(f"[Periode #{i+1}]")
-                        lines.append(f"• Waktu       : {time_str}")
-                        lines.append(f"• Agg. Bids   : {format_usd(agg_bids)}  | {agg_bids_amount:.3f} BTC")
-                        lines.append(f"• Agg. Asks   : {format_usd(agg_asks)}  | {agg_asks_amount:.3f} BTC")
-                        lines.append(f"• Pressure    : {pressure_text}")
-                        lines.append("")
+                            
+                            # Format USD values
+                            def format_usd(value):
+                                if value >= 1e6:
+                                    return f"${value/1e6:,.2f}M"
+                                elif value >= 1e3:
+                                    return f"${value/1e3:,.0f}K"
+                                else:
+                                    return f"${value:,.2f}"
+                            
+                            lines.append(f"[Periode #{i+1}]")
+                            lines.append(f"• Waktu       : {time_str}")
+                            lines.append(f"• Agg. Bids   : {format_usd(agg_bids)}  | {agg_bids_amount:.3f} BTC")
+                            lines.append(f"• Agg. Asks   : {format_usd(agg_asks)}  | {agg_asks_amount:.3f} BTC")
+                            lines.append(f"• Pressure    : {pressure_text}")
+                            lines.append("")
         else:
             lines.append("• No aggregated depth data available")
             lines.append("")
