@@ -29,38 +29,51 @@ def require_access(func):
     Replaces old _is_whitelisted method with centralized auth.
     """
     @wraps(func)
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-        user = None
-        if update.message:
-            user = update.message.from_user
-        elif update.callback_query:
-            user = update.callback_query.from_user
-        user_id = user.id if user else None
-        username = user.username or user.first_name if user else "Unknown"
-        command = update.message.text.split()[0] if update.message and update.message.text else "unknown"
+    async def wrapper(self, update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        try:
+            user = None
+            if update and getattr(update, "message", None):
+                user = update.message.from_user
+            elif update and getattr(update, "callback_query", None):
+                user = update.callback_query.from_user
+            
+            user_id = user.id if user else None
+            username = user.username or user.first_name if user else "Unknown"
+            command = update.message.text.split()[0] if update and update.message and update.message.text else "unknown"
 
-        if user_id is None:
-            logger.warning("[AUTH] Update without user, denying access")
-            await update.effective_message.reply_text(
-                "🚫 Access Denied\nUnable to identify user.",
-                parse_mode=None,
-            )
+            if user_id is None:
+                logger.warning("[AUTH] Update without user, denying access")
+                if update and hasattr(update, 'effective_message') and update.effective_message:
+                    await update.effective_message.reply_text(
+                        "🚫 Access Denied\nUnable to identify user.",
+                        parse_mode=None,
+                    )
+                return
+
+            # Check access using centralized auth
+            if not is_user_allowed(user_id):
+                log_access_attempt(user_id, username, command, allowed=False)
+                if update and hasattr(update, 'effective_message') and update.effective_message:
+                    await update.effective_message.reply_text(
+                        "🚫 *Access Denied*\n"
+                        "This is a private bot. You need to be whitelisted to use it.\n"
+                        "Please contact the administrator for access.",
+                        parse_mode="Markdown",
+                    )
+                return
+
+            # Log successful access
+            log_access_attempt(user_id, username, command, allowed=True)
+            return await func(self, update, context, *args, **kwargs)
+            
+        except Exception as e:
+            logger.exception("Error in require_access decorator: %s", e)
+            if update and hasattr(update, 'effective_message') and update.effective_message:
+                await update.effective_message.reply_text(
+                    "⚠️ An error occurred while processing your request.",
+                    parse_mode=None,
+                )
             return
-
-        # Check access using centralized auth
-        if not is_user_allowed(user_id):
-            log_access_attempt(user_id, username, command, allowed=False)
-            await update.effective_message.reply_text(
-                "🚫 *Access Denied*\n"
-                "This is a private bot. You need to be whitelisted to use it.\n"
-                "Please contact the administrator for access.",
-                parse_mode="Markdown",
-            )
-            return
-
-        # Log successful access
-        log_access_attempt(user_id, username, command, allowed=True)
-        return await func(update, context, *args, **kwargs)
     
     return wrapper
 
@@ -71,27 +84,39 @@ def require_public_access(func):
     Only denies access if user cannot be identified.
     """
     @wraps(func)
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-        user = None
-        if update.message:
-            user = update.message.from_user
-        elif update.callback_query:
-            user = update.callback_query.from_user
-        user_id = user.id if user else None
-        username = user.username or user.first_name if user else "Unknown"
-        command = update.message.text.split()[0] if update.message and update.message.text else "unknown"
+    async def wrapper(self, update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        try:
+            user = None
+            if update and getattr(update, "message", None):
+                user = update.message.from_user
+            elif update and getattr(update, "callback_query", None):
+                user = update.callback_query.from_user
+            
+            user_id = user.id if user else None
+            username = user.username or user.first_name if user else "Unknown"
+            command = update.message.text.split()[0] if update and update.message and update.message.text else "unknown"
 
-        if user_id is None:
-            logger.warning("[AUTH] Update without user, denying access")
-            await update.effective_message.reply_text(
-                "🚫 Access Denied\nUnable to identify user.",
-                parse_mode=None,
-            )
+            if user_id is None:
+                logger.warning("[AUTH] Update without user, denying access")
+                if update and hasattr(update, 'effective_message') and update.effective_message:
+                    await update.effective_message.reply_text(
+                        "🚫 Access Denied\nUnable to identify user.",
+                        parse_mode=None,
+                    )
+                return
+
+            # Always allow access for public commands, just log it
+            log_access_attempt(user_id, username, command, allowed=True)
+            return await func(self, update, context, *args, **kwargs)
+            
+        except Exception as e:
+            logger.exception("Error in require_public_access decorator: %s", e)
+            if update and hasattr(update, 'effective_message') and update.effective_message:
+                await update.effective_message.reply_text(
+                    "⚠️ An error occurred while processing your request.",
+                    parse_mode=None,
+                )
             return
-
-        # Always allow access for public commands, just log it
-        log_access_attempt(user_id, username, command, allowed=True)
-        return await func(update, context, *args, **kwargs)
     
     return wrapper
 
