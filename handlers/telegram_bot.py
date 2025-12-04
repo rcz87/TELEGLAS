@@ -132,7 +132,7 @@ class TelegramBot:
         self.application = None
 
     def sanitize(self, msg: str) -> str:
-        """Escape all Telegram MarkdownV2 special characters"""
+        """Escape all Telegram Markdown special characters"""
         import re
         return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', msg)
 
@@ -259,7 +259,7 @@ class TelegramBot:
             "⚡ Data updates every 5-30 seconds"
         )
 
-        await update.message.reply_text(help_message, parse_mode="MarkdownV2")
+        await update.message.reply_text(help_message, parse_mode="Markdown")
 
     @require_access
     async def handle_liquidation(
@@ -277,7 +277,7 @@ class TelegramBot:
                 self.sanitize("❌ *Symbol Required*\n\n"
                 "Usage: /liq `[SYMBOL]`\n"
                 "Example: /liq BTC"),
-                parse_mode="MarkdownV2",
+                parse_mode="Markdown",
             )
             return
 
@@ -291,7 +291,7 @@ class TelegramBot:
                 self.sanitize(f"❌ *No Data Found*\n\n"
                 f"Could not retrieve liquidation data for {symbol}\n"
                 "Please check the symbol and try again."),
-                parse_mode="MarkdownV2",
+                parse_mode="Markdown",
             )
             return
 
@@ -307,7 +307,7 @@ class TelegramBot:
             f"🕐 Last Update: {liquidation_data['last_update']}\n\n"
         )
 
-        await update.message.reply_text(message, parse_mode="MarkdownV2")
+        await update.message.reply_text(message, parse_mode="Markdown")
 
     @require_access
     async def handle_sentiment(
@@ -323,7 +323,7 @@ class TelegramBot:
                 self.sanitize("❌ *Service Unavailable*\n\n"
                 "Could not retrieve market sentiment data.\n"
                 "Please try again in a few moments."),
-                parse_mode="MarkdownV2",
+                parse_mode="Markdown",
             )
             return
 
@@ -354,7 +354,7 @@ class TelegramBot:
             f"• Extreme Greed (80-100): High risk zone"
         )
 
-        await update.message.reply_text(message, parse_mode="MarkdownV2")
+        await update.message.reply_text(message, parse_mode="Markdown")
 
     @require_access
     async def handle_whale(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -368,7 +368,7 @@ class TelegramBot:
                 self.sanitize("🐋 *Recent Whale Activity*\n\n"
                 "No significant whale transactions detected in the last 24 hours.\n"
                 "Whale threshold: $500,000+"),
-                parse_mode="MarkdownV2",
+                parse_mode="Markdown",
             )
             return
 
@@ -391,7 +391,7 @@ class TelegramBot:
         message += "💸 Minimum: $500,000\n"
         message += "🏦 Source: Hyperliquid"
 
-        await update.message.reply_text(message, parse_mode="MarkdownV2")
+        await update.message.reply_text(message, parse_mode="Markdown")
 
     @require_access
     async def handle_subscribe(
@@ -435,7 +435,7 @@ class TelegramBot:
             await update.message.reply_text(
                 self.sanitize(f"🔔 *Subscribe to Alerts*\n\n"
                 f"Choose alert type for `{symbol or 'BTC'}`:"),
-                parse_mode="MarkdownV2",
+                parse_mode="Markdown",
                 reply_markup=reply_markup,
             )
             return
@@ -464,13 +464,13 @@ class TelegramBot:
                 f"• 🐋 Whale Transactions (>$500K)\n"
                 f"• 💰 Extreme Funding Rates (±1%)\n\n"
                 f"Use /alerts to manage your subscriptions."),
-                parse_mode="MarkdownV2",
+                parse_mode="Markdown",
             )
         else:
             await update.message.reply_text(
                 self.sanitize("❌ *Subscription Failed*\n\n"
                 "Could not process your subscription. Please try again."),
-                parse_mode="MarkdownV2",
+                parse_mode="Markdown",
             )
 
     @require_access
@@ -489,7 +489,7 @@ class TelegramBot:
                 self.sanitize("❌ *Symbol Required*\n\n"
                 "Usage: /unsubscribe `[SYMBOL]`\n"
                 "Example: /unsubscribe BTC"),
-                parse_mode="MarkdownV2",
+                parse_mode="Markdown",
             )
             return
 
@@ -509,13 +509,13 @@ class TelegramBot:
             await update.message.reply_text(
                 self.sanitize(f"✅ *Unsubscribed*\n\n"
                 f"You've been unsubscribed from all alerts for {symbol}."),
-                parse_mode="MarkdownV2",
+                parse_mode="Markdown",
             )
         else:
             await update.message.reply_text(
                 self.sanitize("❌ *Unsubscribe Failed*\n\n"
                 "You may not have an active subscription for this symbol."),
-                parse_mode="MarkdownV2",
+                parse_mode="Markdown",
             )
 
     @require_access
@@ -537,7 +537,7 @@ class TelegramBot:
                 self.sanitize("📭 *No Active Subscriptions*\n\n"
                 "You're not subscribed to any alerts.\n"
                 "Use /subscribe `[SYMBOL]` to get started."),
-                parse_mode="MarkdownV2",
+                parse_mode="Markdown",
             )
             return
 
@@ -551,7 +551,7 @@ class TelegramBot:
                 f"🕐 Subscribed: {sub.created_at[:10]}\n\n"
             )
 
-        await update.message.reply_text(message, parse_mode="MarkdownV2")
+        await update.message.reply_text(message, parse_mode="Markdown")
 
     @require_access
     async def handle_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -573,7 +573,7 @@ class TelegramBot:
             f"🕐 Uptime: Bot is running"
         )
 
-        await update.message.reply_text(message, parse_mode="MarkdownV2")
+        await update.message.reply_text(message, parse_mode="Markdown")
 
     @require_access
     async def handle_alerts_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -611,7 +611,7 @@ class TelegramBot:
             "/alerts_status - Show this status"
         )
 
-        await update.message.reply_text(message, parse_mode="MarkdownV2")
+        await update.message.reply_text(message, parse_mode="Markdown")
 
     @require_access
     async def handle_alerts_on_whale(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -636,7 +636,7 @@ class TelegramBot:
                 self.sanitize("🐋 *Whale alerts already enabled*\n\n"
                 "Whale monitoring is currently running and will automatically\n"
                 "alert you to significant whale transactions (>$500K)."),
-                parse_mode="MarkdownV2",
+                parse_mode="Markdown",
             )
         else:
             await update.message.reply_text(
@@ -645,7 +645,7 @@ class TelegramBot:
                 "`ENABLE_WHALE_ALERTS=true` in your environment\n\n"
                 "Then restart the bot for changes to take effect.\n\n"
                 "Current status: Whale alerts are DISABLED"),
-                parse_mode="MarkdownV2",
+                parse_mode="Markdown",
             )
             logger.warning(f"[ALERT_CONTROL] User {user_id} tried to enable whale alerts but ENABLE_WHALE_ALERTS=false")
 
@@ -670,7 +670,7 @@ class TelegramBot:
                 self.sanitize("🐋 *Whale alerts already disabled*\n\n"
                 "Whale monitoring is currently not running automatically.\n"
                 "You can still use /whale command for manual checks."),
-                parse_mode="MarkdownV2",
+                parse_mode="Markdown",
             )
         else:
             await update.message.reply_text(
@@ -679,7 +679,7 @@ class TelegramBot:
                 "`ENABLE_WHALE_ALERTS=false` in your environment\n\n"
                 "Then restart the bot for changes to take effect.\n\n"
                 "Current status: Whale alerts are ENABLED"),
-                parse_mode="MarkdownV2",
+                parse_mode="Markdown",
             )
             logger.info(f"[ALERT_CONTROL] User {user_id} tried to disable whale alerts but needs config change")
 
@@ -1011,12 +1011,12 @@ CG Levels
                 await query.edit_message_text(
                     self.sanitize(f"✅ *Subscribed to {alert_text} for {symbol}*\n\n"
                     "You'll receive notifications when significant events occur."),
-                    parse_mode="MarkdownV2",
+                    parse_mode="Markdown",
                 )
             else:
                 await query.edit_message_text(
                     self.sanitize("❌ *Subscription Failed*\n\n" "Please try again later."),
-                    parse_mode="MarkdownV2",
+                    parse_mode="Markdown",
                 )
 
     @require_access
@@ -1027,7 +1027,7 @@ CG Levels
             self.sanitize("👋 *Hello!*\n\n"
             "Use /help to see available commands.\n"
             "I'm here to provide real-time crypto trading signals!"),
-            parse_mode="MarkdownV2",
+            parse_mode="Markdown",
         )
 
     async def broadcast_alert(self, message: str):
@@ -1037,7 +1037,7 @@ CG Levels
 
         try:
             await self.application.bot.send_message(
-                chat_id=self.alert_channel_id, text=self.sanitize(message), parse_mode="MarkdownV2"
+                chat_id=self.alert_channel_id, text=self.sanitize(message), parse_mode="Markdown"
             )
             logger.info(f"Alert broadcasted to channel {self.alert_channel_id}")
         except Exception as e:
