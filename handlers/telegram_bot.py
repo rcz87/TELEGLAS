@@ -30,7 +30,11 @@ def require_access(func):
     """
     @wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-        user = update.effective_user
+        user = None
+        if update.message:
+            user = update.message.from_user
+        elif update.callback_query:
+            user = update.callback_query.from_user
         user_id = user.id if user else None
         username = user.username or user.first_name if user else "Unknown"
         command = update.message.text.split()[0] if update.message and update.message.text else "unknown"
@@ -68,7 +72,11 @@ def require_public_access(func):
     """
     @wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-        user = update.effective_user
+        user = None
+        if update.message:
+            user = update.message.from_user
+        elif update.callback_query:
+            user = update.callback_query.from_user
         user_id = user.id if user else None
         username = user.username or user.first_name if user else "Unknown"
         command = update.message.text.split()[0] if update.message and update.message.text else "unknown"
@@ -165,7 +173,11 @@ class TelegramBot:
     @require_access
     async def handle_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command"""
-        user = update.effective_user
+        user = None
+        if update.message:
+            user = update.message.from_user
+        elif update.callback_query:
+            user = update.callback_query.from_user
         username = user.username or user.first_name
 
         welcome_message = (
@@ -403,9 +415,16 @@ class TelegramBot:
             )
             return
 
+        # Get user ID from compatible implementation
+        user = None
+        if update.message:
+            user = update.message.from_user
+        elif update.callback_query:
+            user = update.callback_query.from_user
+        
         # For simplicity, subscribe to all alerts
         subscription = UserSubscription(
-            user_id=update.effective_user.id,
+            user_id=user.id if user else None,
             symbol=symbol,
             alert_types=["liquidation", "whale", "funding"],
         )
@@ -449,9 +468,16 @@ class TelegramBot:
             )
             return
 
+        # Get user ID from compatible implementation
+        user = None
+        if update.message:
+            user = update.message.from_user
+        elif update.callback_query:
+            user = update.callback_query.from_user
+        
         # Remove subscription
         success = await db_manager.remove_user_subscription(
-            update.effective_user.id, symbol
+            user.id if user else None, symbol
         )
 
         if success:
@@ -470,9 +496,15 @@ class TelegramBot:
     @require_access
     async def handle_alerts(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /alerts command - show user's subscriptions"""
+        # Get user ID from compatible implementation
+        user = None
+        if update.message:
+            user = update.message.from_user
+        elif update.callback_query:
+            user = update.callback_query.from_user
 
         subscriptions = await db_manager.get_user_subscriptions(
-            update.effective_user.id
+            user.id if user else None
         )
 
         if not subscriptions:
@@ -521,8 +553,15 @@ class TelegramBot:
     @require_access
     async def handle_alerts_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /alerts_status command - show which alerts are ON/OFF"""
-        user_id = update.effective_user.id
-        username = update.effective_user.username or update.effective_user.first_name
+        # Get user from compatible implementation
+        user = None
+        if update.message:
+            user = update.message.from_user
+        elif update.callback_query:
+            user = update.callback_query.from_user
+        
+        user_id = user.id if user else None
+        username = user.username or user.first_name if user else "Unknown"
         
         # Log incoming update
         logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /alerts_status command")
@@ -552,8 +591,15 @@ class TelegramBot:
     @require_access
     async def handle_alerts_on_whale(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /alerts_on_w command - turn ON whale alerts"""
-        user_id = update.effective_user.id
-        username = update.effective_user.username or update.effective_user.first_name
+        # Get user from compatible implementation
+        user = None
+        if update.message:
+            user = update.message.from_user
+        elif update.callback_query:
+            user = update.callback_query.from_user
+        
+        user_id = user.id if user else None
+        username = user.username or user.first_name if user else "Unknown"
         
         # Log incoming update
         logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /alerts_on_w command")
@@ -581,8 +627,15 @@ class TelegramBot:
     @require_access
     async def handle_alerts_off_whale(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /alerts_off_w command - turn OFF whale alerts"""
-        user_id = update.effective_user.id
-        username = update.effective_user.username or update.effective_user.first_name
+        # Get user from compatible implementation
+        user = None
+        if update.message:
+            user = update.message.from_user
+        elif update.callback_query:
+            user = update.callback_query.from_user
+        
+        user_id = user.id if user else None
+        username = user.username or user.first_name if user else "Unknown"
         
         # Log incoming update
         logger.info(f"[TELEGRAM] User {user_id} (@{username}) sent /alerts_off_w command")
@@ -608,8 +661,15 @@ class TelegramBot:
     @require_access
     async def handle_raw_data(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /raw command - standardized comprehensive market data"""
-        user_id = update.effective_user.id
-        username = update.effective_user.username or update.effective_user.first_name
+        # Get user from compatible implementation
+        user = None
+        if update.message:
+            user = update.message.from_user
+        elif update.callback_query:
+            user = update.callback_query.from_user
+        
+        user_id = user.id if user else None
+        username = user.username or user.first_name if user else "Unknown"
         
         # Check if this is exactly "/raw" or "/raw@botname" with no args
         message_text = update.message.text.strip()
