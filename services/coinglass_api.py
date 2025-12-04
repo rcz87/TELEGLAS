@@ -759,6 +759,89 @@ class CoinGlassAPI:
             logger.error(f"[COINGLASS] Failed endpoint /api/futures/v2/taker-buy-sell-volume/history reason: {e}")
             return {"success": False, "data": []}
 
+    async def get_taker_flow(
+        self,
+        symbol: str,
+        exchange: str = "Binance",
+        interval: str = "h1",
+        limit: int = 100
+    ) -> Dict[str, Any]:
+        """
+        Get taker flow data for multi-timeframe analysis using the v2 endpoint
+        Returns CVD (Cumulative Volume Delta) proxy data
+        """
+        try:
+            params = {
+                "symbol": f"{symbol}USDT",  # Format symbol with USDT suffix
+                "exchange": exchange,
+                "interval": interval,
+                "limit": limit
+            }
+            
+            result = await self._make_request("/api/futures/v2/taker-buy-sell-volume/history", params)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed taker flow endpoint reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            
+            # Process the data to calculate CVD (Cumulative Volume Delta)
+            data = result.get("data", [])
+            if not data or not isinstance(data, list):
+                return {"success": False, "data": []}
+            
+            processed_data = []
+            cumulative_buy = 0.0
+            cumulative_sell = 0.0
+            cumulative_delta = 0.0
+            
+            for entry in reversed(data):  # Process oldest to newest
+                if isinstance(entry, dict):
+                    buy_volume = safe_float(entry.get("taker_buy_volume_usd"))
+                    sell_volume = safe_float(entry.get("taker_sell_volume_usd"))
+                    timestamp = safe_int(entry.get("time"))
+                    
+                    # Update cumulative values
+                    cumulative_buy += buy_volume
+                    cumulative_sell += sell_volume
+                    cumulative_delta = cumulative_buy - cumulative_sell
+                    
+                    # Calculate current delta
+                    current_delta = buy_volume - sell_volume
+                    
+                    processed_entry = {
+                        "timestamp": timestamp,
+                        "datetime": datetime.fromtimestamp(timestamp / 1000).strftime('%Y-%m-%d %H:%M:%S'),
+                        "buy_volume": buy_volume,
+                        "sell_volume": sell_volume,
+                        "current_delta": current_delta,
+                        "cumulative_buy": cumulative_buy,
+                        "cumulative_sell": cumulative_sell,
+                        "cumulative_delta": cumulative_delta,
+                        "buy_sell_ratio": buy_volume / max(sell_volume, 1.0),
+                    }
+                    processed_data.append(processed_entry)
+            
+            # Return the most recent data
+            if processed_data:
+                latest = processed_data[-1]
+                return {
+                    "success": True,
+                    "data": processed_data,
+                    "latest": latest,
+                    "summary": {
+                        "total_buy_volume": latest["cumulative_buy"],
+                        "total_sell_volume": latest["cumulative_sell"],
+                        "net_delta": latest["cumulative_delta"],
+                        "buy_sell_ratio": latest["buy_sell_ratio"],
+                        "trend": "Bullish" if latest["cumulative_delta"] > 0 else "Bearish" if latest["cumulative_delta"] < 0 else "Neutral"
+                    }
+                }
+            
+            return {"success": False, "data": []}
+            
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed to get taker flow for {symbol}: {e}")
+            return {"success": False, "data": []}
+
     # Additional Utility Endpoints
 
     async def get_large_limit_orders(self, symbol: str, ex_name: str) -> Dict[str, Any]:

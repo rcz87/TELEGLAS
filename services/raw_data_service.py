@@ -162,18 +162,18 @@ class RawDataService:
             return {}
     
     async def get_taker_volume(self, symbol: str) -> Dict[str, Any]:
-        """Get taker volume data using v2 taker buy-sell volume history for better multi-timeframe analysis"""
+        """Get taker volume data using new get_taker_flow endpoint for CVD analysis"""
         try:
-            # Try new v2 taker buy-sell volume history endpoint for better multi-timeframe data
-            result = await self.api.get_taker_buy_sell_volume_history(symbol, "Binance", "h1", 1000)
+            # Use the new get_taker_flow endpoint that processes v2 taker buy-sell volume data
+            result = await self.api.get_taker_flow(symbol, "Binance", "h1", 100)
             
             if not result.get("success"):
-                # Fallback to orderbook ask-bids history endpoint
+                # Fallback to v2 taker buy-sell volume history endpoint
+                result = await self.api.get_taker_buy_sell_volume_history(symbol, "Binance", "h1", 1000)
+            
+            if not result.get("success"):
+                # Final fallback to orderbook ask-bids history endpoint
                 result = await self.api.get_orderbook_ask_bids_history(symbol, "Binance", "1h", 100)
-            
-            if not result.get("success"):
-                # Final fallback to original endpoint if both new ones fail
-                result = await self.api.get_taker_buy_sell_volume_exchange_list(symbol)
             
             return result
         except Exception as e:
@@ -538,7 +538,7 @@ class RawDataService:
         }
     
     def _extract_taker_flow_data(self, taker_data: Dict) -> Dict[str, Any]:
-        """Extract taker flow data for multiple timeframes from taker buy-sell volume history"""
+        """Extract taker flow data for multiple timeframes from new get_taker_flow endpoint"""
         # Default empty data with None for missing data
         default_tf = {"buy": None, "sell": None, "net": None}
         result = {
@@ -551,17 +551,46 @@ class RawDataService:
         if not taker_data or not taker_data.get("success"):
             return result
         
+        # Check if we have summary data from get_taker_flow endpoint
+        summary = safe_get(taker_data, "summary", {})
+        if summary:
+            # Use summary data from get_taker_flow endpoint
+            total_buy = safe_float(safe_get(summary, "total_buy_volume")) / 1e6  # Convert to millions
+            total_sell = safe_float(safe_get(summary, "total_sell_volume")) / 1e6  # Convert to millions
+            net_delta = safe_float(safe_get(summary, "net_delta")) / 1e6  # Convert to millions
+            trend = safe_get(summary, "trend", "Neutral")
+            
+            # Only use data if we have valid values
+            if total_buy > 0 or total_sell > 0:
+                flow_data = {
+                    "buy": total_buy,
+                    "sell": total_sell,
+                    "net": net_delta,
+                    "trend": trend
+                }
+                
+                result["5m"] = flow_data.copy()
+                result["15m"] = flow_data.copy()
+                result["1h"] = flow_data.copy()
+                result["4h"] = flow_data.copy()
+                
+                logger.info(f"[RAW] Extracted taker flow from summary: Buy {total_buy:.2f}M, Sell {total_sell:.2f}M, Net {net_delta:+.2f}M, Trend {trend}")
+            else:
+                logger.info(f"[RAW] Taker flow summary has zero values, keeping N/A")
+            return result
+        
+        # Fallback to raw data processing for v2 taker buy-sell volume history
         data = safe_get(taker_data, "data", [])
         if not data or not isinstance(data, list):
             return result
         
         try:
-            # The taker buy-sell volume data gives us direct buy/sell volumes
+            # The v2 taker buy-sell volume data gives us direct buy/sell volumes
             if data:
                 latest = data[-1]  # Most recent data
                 if isinstance(latest, dict):
-                    buy_usd = safe_float(safe_get(latest, "buyVolume")) / 1e6  # Convert to millions
-                    sell_usd = safe_float(safe_get(latest, "sellVolume")) / 1e6  # Convert to millions
+                    buy_usd = safe_float(safe_get(latest, "taker_buy_volume_usd")) / 1e6  # Convert to millions
+                    sell_usd = safe_float(safe_get(latest, "taker_sell_volume_usd")) / 1e6  # Convert to millions
                     net_flow = buy_usd - sell_usd
                     
                     # Only use data if we have valid values
@@ -577,7 +606,7 @@ class RawDataService:
                         result["1h"] = flow_data.copy()
                         result["4h"] = flow_data.copy()
                         
-                        logger.info(f"[RAW] Extracted taker flow: Buy {buy_usd:.2f}M, Sell {sell_usd:.2f}M, Net {net_flow:+.2f}M")
+                        logger.info(f"[RAW] Extracted taker flow from raw: Buy {buy_usd:.2f}M, Sell {sell_usd:.2f}M, Net {net_flow:+.2f}M")
                     else:
                         logger.info(f"[RAW] Taker flow data has zero values, keeping N/A")
         
