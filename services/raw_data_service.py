@@ -135,9 +135,10 @@ class RawDataService:
             return {}
     
     async def get_funding_rate(self, symbol: str) -> Dict[str, Any]:
-        """Get current funding rate"""
+        """Get current funding rate using new get_current_funding_rate endpoint"""
         try:
-            result = await self.api.get_funding_rate_exchange_list(symbol)
+            # Use the new get_current_funding_rate endpoint for real current funding rate
+            result = await self.api.get_current_funding_rate(symbol, "Binance")
             return result
         except Exception as e:
             logger.error(f"[RAW] Error in get_funding_rate for {symbol}: {e}")
@@ -238,13 +239,13 @@ class RawDataService:
             return {}
 
     async def get_rsi_1h_4h_1d(self, symbol: str) -> Dict[str, Any]:
-        """Get RSI data specifically for 1h/4h/1d timeframes using new get_real_rsi endpoint"""
+        """Get RSI data specifically for 1h/4h/1d timeframes using new get_rsi_value endpoint"""
         try:
             # Fetch real RSI data for 1h, 4h, and 1d timeframes concurrently
             tasks = [
-                self.api.get_real_rsi(symbol, "1h", "Binance"),
-                self.api.get_real_rsi(symbol, "4h", "Binance"),
-                self.api.get_real_rsi(symbol, "1d", "Binance")
+                self.api.get_rsi_value(symbol, "1h", "Binance"),
+                self.api.get_rsi_value(symbol, "4h", "Binance"),
+                self.api.get_rsi_value(symbol, "1d", "Binance")
             ]
             
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -256,7 +257,7 @@ class RawDataService:
             for i, tf in enumerate(timeframes):
                 result = results[i] if not isinstance(results[i], Exception) else None
                 if result is not None:
-                    # get_real_rsi now returns float directly or None
+                    # get_rsi_value now returns float directly or None
                     rsi_value = result
                     if rsi_value is not None:
                         # Validate RSI is in valid range (0-100)
@@ -454,16 +455,28 @@ class RawDataService:
         return {"futures_24h": 0.0, "perp_24h": 0.0, "spot_24h": None}
     
     def _extract_funding_data(self, funding_data: Dict, funding_history_data: Dict) -> Dict[str, Any]:
-        """Extract funding rate data"""
+        """Extract funding rate data using new get_current_funding_rate endpoint"""
         current_funding = 0.0
         next_funding = "N/A"  # Default to N/A instead of hardcoded time
         
-        if funding_data and funding_data.get("success"):
-            data = safe_get(funding_data, "data", [])
-            if data:
-                latest = data[0]  # Get most recent
-                if isinstance(latest, dict):
-                    current_funding = safe_float(safe_get(latest, "avg_funding_rate_by_oi"))
+        # Try to get current funding rate from new get_current_funding_rate endpoint
+        if funding_data and isinstance(funding_data, dict):
+            # The new get_current_funding_rate returns float directly, not dict with "success" field
+            if isinstance(funding_data, (int, float)):
+                current_funding = float(funding_data)  # Direct float from new endpoint
+                logger.info(f"[RAW] Current funding rate from new endpoint: {current_funding:.4f}%")
+            elif funding_data.get("success"):
+                data = safe_get(funding_data, "data", [])
+                if data:
+                    latest = data[0]  # Get most recent
+                    if isinstance(latest, dict):
+                        # Try multiple possible field names for funding rate
+                        rate = (safe_float(safe_get(latest, "fundingRate")) or 
+                               safe_float(safe_get(latest, "rate")) or 
+                               safe_float(safe_get(latest, "avgFundingRate")) or
+                               safe_float(safe_get(latest, "funding_rate")) or 0.0)
+                        current_funding = rate * 100.0  # Convert to percentage
+                        logger.info(f"[RAW] Current funding rate from fallback: {current_funding:.4f}%")
         
         funding_history = []
         if funding_history_data and funding_history_data.get("success"):
