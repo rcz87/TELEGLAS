@@ -250,13 +250,18 @@ class RawDataService:
     async def get_rsi_1h_4h_1d(self, symbol: str) -> Dict[str, Any]:
         """Get RSI data specifically for 1h/4h/1d timeframes using new get_rsi_value endpoint"""
         try:
-            logger.info(f"[RAW] Fetching RSI for {symbol} on timeframes: 1h, 4h, 1d")
+            # Import normalize_future_symbol function
+            from services.coinglass_api import normalize_future_symbol
+            
+            # Normalize symbol for RSI endpoint
+            normalized_symbol = normalize_future_symbol(symbol)
+            logger.info(f"[RAW] Fetching RSI for {symbol} -> {normalized_symbol} on timeframes: 1h, 4h, 1d")
 
             # Fetch real RSI data for 1h, 4h, and 1d timeframes concurrently
             tasks = [
-                self.api.get_rsi_value(symbol, "1h", "Binance"),
-                self.api.get_rsi_value(symbol, "4h", "Binance"),
-                self.api.get_rsi_value(symbol, "1d", "Binance")
+                self.api.get_rsi_value(normalized_symbol, "1h", "Binance"),
+                self.api.get_rsi_value(normalized_symbol, "4h", "Binance"),
+                self.api.get_rsi_value(normalized_symbol, "1d", "Binance")
             ]
 
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -270,7 +275,7 @@ class RawDataService:
 
                 # Check if result is an exception
                 if isinstance(result, Exception):
-                    logger.error(f"[RAW] RSI {tf} for {symbol} raised exception: {result}")
+                    logger.error(f"[RAW] RSI {tf} for {normalized_symbol} raised exception: {result}")
                     rsi_data[tf] = None
                     continue
 
@@ -280,13 +285,13 @@ class RawDataService:
                     # Validate RSI is in valid range (0-100)
                     if 0 <= rsi_value <= 100:
                         rsi_data[tf] = rsi_value
-                        logger.info(f"[RAW] ✓ RSI {tf} for {symbol}: {rsi_value:.2f}")
+                        logger.info(f"[RAW] ✓ RSI {tf} for {normalized_symbol}: {rsi_value:.2f}")
                     else:
                         rsi_data[tf] = None
                         logger.warning(f"[RAW] Invalid RSI value {rsi_value} for {tf}, setting to None")
                 else:
                     rsi_data[tf] = None
-                    logger.warning(f"[RAW] RSI {tf} for {symbol} returned None - API may not have data")
+                    logger.warning(f"[RAW] RSI {tf} for {normalized_symbol} returned None - API may not have data")
 
             return rsi_data
 

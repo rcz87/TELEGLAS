@@ -974,18 +974,15 @@ class CoinGlassAPI:
         symbol: str,
         interval: str,
         exchange: str = "Binance",
-        limit: int = 1,
+        limit: int = 100,
     ) -> float | None:
         """
         Get latest RSI value for a symbol on a given timeframe.
         Uses /api/futures/indicators/rsi (CoinGlass v4).
         Returns float or None on error.
         """
-        # pastikan simbol pakai pair futures standar, misalnya BTCUSDT, ETHUSDT, SOLUSDT
-        if not symbol.upper().endswith("USDT"):
-            cg_symbol = f"{symbol.upper()}USDT"
-        else:
-            cg_symbol = symbol.upper()
+        # Use normalize_future_symbol to ensure proper format
+        cg_symbol = normalize_future_symbol(symbol)
 
         path = "/api/futures/indicators/rsi"
         params = {
@@ -998,19 +995,19 @@ class CoinGlassAPI:
         resp = await self._make_request(path, params)
 
         if not resp or not resp.get("success"):
-            logger.warning("[RSI] Failed to fetch RSI for %s %s: %s", cg_symbol, interval, resp.get("error", "Unknown error"))
+            logger.warning(f"[RSI] Failed to fetch RSI for {cg_symbol} {interval}: {resp.get('error', 'Unknown error')}")
             return None
 
         data = resp.get("data") or []
         if not data:
-            logger.warning("[RSI] Empty RSI data for %s %s", cg_symbol, interval)
+            logger.warning(f"[RSI] Empty RSI data for {cg_symbol} {interval}")
             return None
 
         last = data[-1]
         try:
-            return float(last["rsi"])
+            return float(last["rsi_value"])
         except Exception as e:
-            logger.warning("[RSI] Failed to parse RSI value for %s %s: %s", cg_symbol, interval, e)
+            logger.warning(f"[RSI] Failed to parse RSI value for {cg_symbol} {interval}: {e}")
             return None
 
     async def get_current_funding_rate(
@@ -1810,8 +1807,24 @@ class RawDataUnavailable(Exception):
     pass
 
 
+def normalize_future_symbol(symbol: str) -> str:
+    """
+    Normalize symbol to futures format for CoinGlass API
+    
+    Args:
+        symbol: Input symbol (e.g., "BTC", "ETH", "BTCUSDT")
+    
+    Returns:
+        Normalized symbol with USDT suffix (e.g., "BTCUSDT", "ETHUSDT")
+    """
+    s = symbol.upper()
+    if s.endswith("USDT") or s.endswith("USD"):
+        return s
+    return s + "USDT"
+
+
 # Global instance
 coinglass_api = CoinGlassAPI()
 
 # Export safe parsing functions for use in other modules
-__all__ = ['CoinGlassAPI', 'coinglass_api', 'safe_float', 'safe_int', 'safe_get', 'safe_list_get', 'SymbolNotSupported', 'RawDataUnavailable']
+__all__ = ['CoinGlassAPI', 'coinglass_api', 'safe_float', 'safe_int', 'safe_get', 'safe_list_get', 'SymbolNotSupported', 'RawDataUnavailable', 'normalize_future_symbol']
