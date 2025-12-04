@@ -852,7 +852,7 @@ class CoinGlassAPI:
     ) -> Dict[str, Any]:
         """Get RSI indicators for multi-timeframe analysis"""
         try:
-            # Use the indicators RSI endpoint as provided by user
+            # Use indicators RSI endpoint as provided by user
             params = {
                 "symbol": f"{symbol}USDT",  # Format symbol with USDT suffix
                 "exchange": exchange,
@@ -873,6 +873,42 @@ class CoinGlassAPI:
         except Exception as e:
             logger.error(f"[COINGLASS] Failed endpoint /api/futures/indicators/rsi reason: {e}")
             return {"success": False, "data": []}
+
+    async def get_real_rsi(self, symbol: str, interval: str, exchange: str = "Binance") -> Dict[str, Any]:
+        """Get real RSI value using /api/futures/indicators/rsi endpoint"""
+        try:
+            # Use the indicators RSI endpoint as requested
+            params = {
+                "symbol": f"{symbol}USDT",  # Format symbol with USDT suffix
+                "exchange": exchange,
+                "interval": interval,
+                "limit": 100,  # Get recent data
+                "window": 14,  # Standard RSI period
+                "series_type": "close"
+            }
+            
+            result = await self._make_request("/api/futures/indicators/rsi", params)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/indicators/rsi reason: {result.get('error')}")
+                return {"success": False, "rsi_value": None}
+            
+            # Extract the last RSI value from data[-1].rsi_value
+            data = result.get("data", [])
+            if not data or not isinstance(data, list):
+                return {"success": True, "rsi_value": None}
+            
+            # Get the most recent RSI value
+            latest_data = data[-1]
+            if isinstance(latest_data, dict):
+                rsi_value = safe_float(latest_data.get("rsi_value"))
+                logger.info(f"[RSI] Real RSI for {symbol} {interval}: {rsi_value}")
+                return {"success": True, "rsi_value": rsi_value}
+            
+            return {"success": True, "rsi_value": None}
+            
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed to get real RSI for {symbol} {interval}: {e}")
+            return {"success": False, "rsi_value": None}
 
     async def get_ema_indicators(
         self,
