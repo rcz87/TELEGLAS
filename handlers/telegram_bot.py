@@ -851,12 +851,11 @@ class TelegramBot:
             tf_1h = safe_get(taker_flow, '1h', {})
             tf_4h = safe_get(taker_flow, '4h', {})
             
-            # RSI data
-            rsi = safe_get(data, 'rsi', {})
-            rsi_5m = safe_get(rsi, '5m')
-            rsi_15m = safe_get(rsi, '15m')
-            rsi_1h = safe_get(rsi, '1h')
-            rsi_4h = safe_get(rsi, '4h')
+            # RSI data - Use new 1h/4h/1d format
+            rsi_1h_4h_1d = safe_get(data, 'rsi_1h_4h_1d', {})
+            rsi_1h_new = safe_get(rsi_1h_4h_1d, 'rsi_1h')
+            rsi_4h_new = safe_get(rsi_1h_4h_1d, 'rsi_4h')
+            rsi_1d_new = safe_get(rsi_1h_4h_1d, 'rsi_1d')
             
             # CG Levels data
             cg_levels = safe_get(data, 'cg_levels', {})
@@ -965,11 +964,10 @@ Taker Flow Multi-Timeframe (CVD Proxy)
 1H: {format_taker_flow(tf_1h)}
 4H: {format_taker_flow(tf_4h)}
 
-RSI Multi-Timeframe (14)
-5M : {format_rsi(rsi_5m)}
-15M: {format_rsi(rsi_15m)}
-1H : {format_rsi(rsi_1h)}
-4H : {format_rsi(rsi_4h)}
+RSI (1h/4h/1d)
+1H : {format_rsi(rsi_1h_new)}
+4H : {format_rsi(rsi_4h_new)}
+1D : {format_rsi(rsi_1d_new)}
 
 CG Levels
 {levels_text}"""
