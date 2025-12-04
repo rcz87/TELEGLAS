@@ -254,18 +254,24 @@ class RawDataService:
             timeframes = ["1h", "4h", "1d"]
             
             for i, tf in enumerate(timeframes):
-                result = results[i] if not isinstance(results[i], Exception) else {}
-                if result and result.get("success"):
-                    rsi_value = safe_float(result.get("rsi_value"))
-                    # Store all RSI values (0-100), including 0.00 which is valid
-                    if 0 <= rsi_value <= 100:
-                        rsi_data[tf] = rsi_value
-                        logger.info(f"[RAW] Real RSI {tf} for {symbol}: {rsi_value:.2f}")
+                result = results[i] if not isinstance(results[i], Exception) else None
+                if result is not None:
+                    # get_real_rsi now returns float directly or None
+                    rsi_value = result
+                    if rsi_value is not None:
+                        # Validate RSI is in valid range (0-100)
+                        if 0 <= rsi_value <= 100:
+                            rsi_data[tf] = rsi_value
+                            logger.info(f"[RAW] Real RSI {tf} for {symbol}: {rsi_value:.2f}")
+                        else:
+                            rsi_data[tf] = None
+                            logger.warning(f"[RAW] Invalid RSI value {rsi_value} for {tf}, setting to None")
                     else:
                         rsi_data[tf] = None
-                        logger.warning(f"[RAW] Invalid RSI value {rsi_value} for {tf}, setting to None")
+                        logger.info(f"[RAW] RSI {tf} for {symbol} unavailable")
                 else:
                     rsi_data[tf] = None
+                    logger.warning(f"[RAW] Error getting RSI {tf} for {symbol}")
             
             return rsi_data
             
@@ -706,13 +712,28 @@ class RawDataService:
             history_lines = []
             for i, entry in enumerate(history_data[:5], 1):  # Last 5 entries
                 if isinstance(entry, dict):
-                    # Try different field names for funding rate
+                    # Try different field names for funding rate - look for common fields
                     rate = (safe_float(safe_get(entry, "fundingRate")) or 
                            safe_float(safe_get(entry, "rate")) or 
-                           safe_float(safe_get(entry, "avgFundingRate")) or 0.0)
+                           safe_float(safe_get(entry, "avgFundingRate")) or
+                           safe_float(safe_get(entry, "funding_rate")) or 0.0)
                     
-                    # Try to get timestamp
-                    timestamp = safe_get(entry, "createTime") or safe_get(entry, "timestamp") or "Unknown"
+                    # Try to get timestamp - look for common timestamp fields
+                    timestamp = (safe_get(entry, "createTime") or 
+                               safe_get(entry, "timestamp") or 
+                               safe_get(entry, "time") or 
+                               safe_get(entry, "createTimeUtc") or "Unknown")
+                    
+                    # Format timestamp to be more readable
+                    if timestamp and timestamp != "Unknown":
+                        try:
+                            # If timestamp is a number, convert to readable format
+                            if isinstance(timestamp, (int, float)):
+                                from datetime import datetime
+                                dt = datetime.fromtimestamp(timestamp / 1000)  # Convert ms to seconds
+                                timestamp = dt.strftime("%Y-%m-%d %H:%M")
+                        except:
+                            pass  # Keep original timestamp if conversion fails
                     
                     history_lines.append(f"  {i}. {timestamp}: {rate:+.4f}%")
                 else:

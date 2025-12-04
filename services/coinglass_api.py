@@ -886,8 +886,12 @@ class CoinGlassAPI:
             logger.error(f"[COINGLASS] Failed endpoint /api/futures/indicators/rsi reason: {e}")
             return {"success": False, "data": []}
 
-    async def get_real_rsi(self, symbol: str, interval: str, exchange: str = "Binance") -> Dict[str, Any]:
-        """Get real RSI value using /api/futures/indicators/rsi endpoint"""
+    async def get_real_rsi(self, symbol: str, interval: str, exchange: str = "Binance") -> Optional[float]:
+        """
+        Fetch real RSI value from CoinGlass futures RSI indicator endpoint.
+        interval: 1m,3m,5m,15m,30m,1h,4h,6h,8h,12h,1d,1w
+        Returns the latest rsi_value (float) or None if unavailable.
+        """
         try:
             # Use the indicators RSI endpoint as requested
             params = {
@@ -902,25 +906,30 @@ class CoinGlassAPI:
             result = await self._make_request("/api/futures/indicators/rsi", params)
             if not result.get("success"):
                 logger.error(f"[COINGLASS] Failed endpoint /api/futures/indicators/rsi reason: {result.get('error')}")
-                return {"success": False, "rsi_value": None}
+                return None
             
             # Extract the last RSI value from data[-1].rsi_value
             data = result.get("data", [])
             if not data or not isinstance(data, list):
-                return {"success": True, "rsi_value": None}
+                return None
             
             # Get the most recent RSI value
             latest_data = data[-1]
             if isinstance(latest_data, dict):
                 rsi_value = safe_float(latest_data.get("rsi_value"))
-                logger.info(f"[RSI] Real RSI for {symbol} {interval}: {rsi_value}")
-                return {"success": True, "rsi_value": rsi_value}
+                # Validate RSI is in valid range (0-100)
+                if 0 <= rsi_value <= 100:
+                    logger.info(f"[RSI] Real RSI for {symbol} {interval}: {rsi_value}")
+                    return rsi_value
+                else:
+                    logger.warning(f"[RSI] Invalid RSI value {rsi_value} for {symbol} {interval}")
+                    return None
             
-            return {"success": True, "rsi_value": None}
+            return None
             
         except Exception as e:
             logger.error(f"[COINGLASS] Failed to get real RSI for {symbol} {interval}: {e}")
-            return {"success": False, "rsi_value": None}
+            return None
 
     async def get_ema_indicators(
         self,
