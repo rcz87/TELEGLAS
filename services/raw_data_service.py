@@ -234,6 +234,74 @@ class RawDataService:
             logger.error(f"[RAW] Error in get_support_resistance for {symbol}: {e}")
             return {}
 
+    async def get_rsi_1h_4h_1d(self, symbol: str) -> Dict[str, Any]:
+        """Get RSI data specifically for 1h/4h/1d timeframes using the new indicators endpoint"""
+        try:
+            # Fetch RSI data for 1h, 4h, and 1d timeframes concurrently
+            tasks = [
+                self.api.get_rsi_indicators(symbol, "Binance", "1h", 100, window=14),
+                self.api.get_rsi_indicators(symbol, "Binance", "4h", 100, window=14),
+                self.api.get_rsi_indicators(symbol, "Binance", "1d", 100, window=14)
+            ]
+            
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Process results for each timeframe
+            rsi_data = {}
+            timeframes = ["1h", "4h", "1d"]
+            
+            for i, tf in enumerate(timeframes):
+                result = results[i] if not isinstance(results[i], Exception) else {}
+                if result and result.get("success"):
+                    data = safe_get(result, "data", [])
+                    if data and isinstance(data, list) and len(data) > 0:
+                        # Get the most recent RSI value
+                        latest = data[-1]
+                        if isinstance(latest, dict):
+                            rsi_value = safe_float(safe_get(latest, "rsi"))
+                            # Store all RSI values (0-100), including 0.00 which is valid
+                            if 0 <= rsi_value <= 100:
+                                rsi_data[tf] = rsi_value
+                                logger.info(f"[RAW] RSI {tf} for {symbol}: {rsi_value:.2f}")
+                            else:
+                                rsi_data[tf] = None
+                                logger.warning(f"[RAW] Invalid RSI value {rsi_value} for {tf}, setting to None")
+                        else:
+                            rsi_data[tf] = None
+                    else:
+                        rsi_data[tf] = None
+                else:
+                    rsi_data[tf] = None
+            
+            # Format the RSI data as requested: "RSI (1h/4h/1d): 62.37/63.96/22.05"
+            rsi_1h = rsi_data.get("1h")
+            rsi_4h = rsi_data.get("4h")
+            rsi_1d = rsi_data.get("1d")
+            
+            def format_rsi(value):
+                return f"{value:.2f}" if value is not None else "N/A"
+            
+            rsi_summary = f"RSI (1h/4h/1d): {format_rsi(rsi_1h)}/{format_rsi(rsi_4h)}/{format_rsi(rsi_1d)}"
+            
+            return {
+                "rsi_1h": rsi_1h,
+                "rsi_4h": rsi_4h,
+                "rsi_1d": rsi_1d,
+                "rsi_summary": rsi_summary,
+                "raw_data": rsi_data
+            }
+            
+        except Exception as e:
+            logger.error(f"[RAW] Error in get_rsi_1h_4h_1d for {symbol}: {e}")
+            # Return None data on error
+            return {
+                "rsi_1h": None,
+                "rsi_4h": None,
+                "rsi_1d": None,
+                "rsi_summary": "RSI (1h/4h/1d): N/A/N/A/N/A",
+                "raw_data": {"1h": None, "4h": None, "1d": None}
+            }
+
     async def get_ema_multi_tf(self, symbol: str) -> Dict[str, Any]:
         """Get EMA data for multiple timeframes using the new EMA indicators endpoint"""
         try:
