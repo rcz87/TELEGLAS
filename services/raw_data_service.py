@@ -165,7 +165,15 @@ class RawDataService:
     async def get_long_short(self, symbol: str) -> Dict[str, Any]:
         """Get long/short ratio data"""
         try:
-            result = await self.api.get_global_long_short_ratio(symbol, "Binance")
+            # Use normalize_future_symbol to ensure proper format (ETH → ETHUSDT)
+            from services.coinglass_api import normalize_future_symbol
+            futures_pair = normalize_future_symbol(symbol)
+            
+            result = await self.api.get_global_long_short_ratio(futures_pair, "Binance")
+            
+            # DEBUG LOGGING: Log the raw result for verification
+            logger.info(f"[DEBUG LS] Raw global long/short for {symbol}: {result}")
+            
             return result
         except Exception as e:
             logger.error(f"[RAW] Error in get_long_short for {symbol}: {e}")
@@ -292,6 +300,9 @@ class RawDataService:
                 else:
                     rsi_data[tf] = None
                     logger.warning(f"[RAW] RSI {tf} for {normalized_symbol} returned None - API may not have data")
+
+            # DEBUG LOGGING: Log final RSI dict for verification
+            logger.info(f"[DEBUG RSI] Final RSI dict for {symbol}: {rsi_data}")
 
             return rsi_data
 
@@ -540,6 +551,40 @@ class RawDataService:
     
     def _extract_long_short_data(self, ls_data: Dict) -> Dict[str, Any]:
         """Extract long/short ratio data"""
+        # Handle the new format returned by get_global_long_short_ratio
+        # It now returns a dict directly with long_percent, short_percent, ratio_global
+        if ls_data is None:
+            logger.warning(f"[RAW] Long/short data is None")
+            return {
+                "account_ratio_global": None,
+                "position_ratio_global": None,
+                "by_exchange": {"Binance": None, "Bybit": None, "OKX": None}
+            }
+        
+        if isinstance(ls_data, dict):
+            # Check if it's the new format from our fixed get_global_long_short_ratio
+            if "long_percent" in ls_data or "short_percent" in ls_data or "ratio_global" in ls_data:
+                # New format: {"long_percent": X, "short_percent": Y, "ratio_global": Z}
+                account_ratio = safe_float(ls_data.get("ratio_global"))
+                
+                logger.info(f"[RAW] ✓ Long/short extracted from new format: ratio_global={account_ratio}")
+                
+                # If ratio is 0.0 (default from safe_float), treat as missing data
+                if account_ratio == 0.0:
+                    account_ratio = None
+                    logger.warning(f"[RAW] Long/short ratio_global is 0.0, treating as missing data")
+                
+                return {
+                    "account_ratio_global": account_ratio,
+                    "position_ratio_global": None,  # Not available in new format
+                    "by_exchange": {
+                        "Binance": account_ratio,
+                        "Bybit": None,
+                        "OKX": None
+                    }
+                }
+        
+        # Fallback to old format handling
         if not ls_data or not ls_data.get("success"):
             logger.warning(f"[RAW] Long/short data failed or empty: success={ls_data.get('success') if ls_data else None}")
             return {

@@ -400,20 +400,50 @@ class CoinGlassAPI:
             logger.error(f"[COINGLASS] Failed endpoint /api/etf/bitcoin/flow-history reason: {e}")
             return {"success": False, "data": []}
 
-    async def get_global_long_short_ratio(self, symbol: str, ex_name: str) -> Dict[str, Any]:
-        """Get global long/short account ratio history"""
+    async def get_global_long_short_ratio(self, symbol: str, ex_name: str = "Binance") -> Optional[Dict[str, Any]]:
+        """
+        Get global long/short account ratio history
+        
+        Args:
+            symbol: futures_pair (e.g., BTCUSDT, ETHUSDT, SOLUSDT)
+            ex_name: exchange name (default: "Binance")
+            
+        Returns:
+            Dict with long_percent, short_percent, ratio_global or None
+        """
         try:
+            # Use EXACT params as specified in requirements
+            params = {
+                "exchange": ex_name,
+                "symbol": symbol,  # Use futures_pair (BTCUSDT)
+                "interval": "h1"  # IMPORTANT: Must be "h1", not "1h"
+            }
+            
             result = await self._make_request(
                 "/api/futures/global-long-short-account-ratio/history",
-                {"symbol": symbol, "exName": ex_name},
+                params
             )
-            if not result.get("success"):
-                logger.error(f"[COINGLASS] Failed endpoint /api/futures/global-long-short-account-ratio/history reason: {result.get('error')}")
-                return {"success": False, "data": []}
-            return result
+            
+            if result.get("code") == "0":
+                data = result.get("data") or []
+                valid = [x for x in data if x.get("global_account_long_percent") is not None]
+                if valid:
+                    latest = valid[-1]
+                    return {
+                        "long_percent": latest.get("global_account_long_percent"),
+                        "short_percent": latest.get("global_account_short_percent"),
+                        "ratio_global": latest.get("global_account_long_short_ratio"),
+                    }
+                else:
+                    logger.warning(f"[COINGLASS] No valid global long/short data for {symbol}")
+                    return None
+            else:
+                logger.warning(f"[COINGLASS] Global long/short API error for {symbol}: {result.get('msg', 'Unknown error')}")
+                return None
+                
         except Exception as e:
             logger.error(f"[COINGLASS] Failed endpoint /api/futures/global-long-short-account-ratio/history reason: {e}")
-            return {"success": False, "data": []}
+            return None
 
     # Market Data Endpoints
 
