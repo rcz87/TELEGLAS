@@ -634,6 +634,18 @@ class CoinGlassAPI:
             logger.error(f"[COINGLASS] Failed endpoint /api/futures/funding-rate/history reason: {e}")
             return {"success": False, "data": []}
 
+    async def get_funding_history(self, symbol: str) -> Dict[str, Any]:
+        """Get funding rate history - alias for get_funding_rate_ohlc_history"""
+        try:
+            result = await self.get_funding_rate_ohlc_history(symbol)
+            if not result.get("success"):
+                logger.error(f"[COINGLASS] Failed endpoint /api/futures/funding-rate/history reason: {result.get('error')}")
+                return {"success": False, "data": []}
+            return result
+        except Exception as e:
+            logger.error(f"[COINGLASS] Failed endpoint /api/futures/funding-rate/history reason: {e}")
+            return {"success": False, "data": []}
+
     async def get_funding_rate_forecast(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         """Get funding rate forecast"""
         try:

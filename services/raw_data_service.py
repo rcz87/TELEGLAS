@@ -146,7 +146,7 @@ class RawDataService:
     async def get_funding_history(self, symbol: str) -> Dict[str, Any]:
         """Get funding rate history"""
         try:
-            result = await self.api.get_funding_rate_ohlc_history(symbol)
+            result = await self.api.get_funding_history(symbol)
             return result
         except Exception as e:
             logger.error(f"[RAW] Error in get_funding_history for {symbol}: {e}")
@@ -181,7 +181,7 @@ class RawDataService:
             return {}
     
     async def get_rsi_multi_tf(self, symbol: str) -> Dict[str, Any]:
-        """Get RSI data for multiple timeframes using the new indicators endpoint"""
+        """Get RSI data for multiple timeframes using new indicators endpoint"""
         try:
             # Fetch RSI data for all required timeframes concurrently
             tasks = [
@@ -238,7 +238,7 @@ class RawDataService:
             return {}
 
     async def get_rsi_1h_4h_1d(self, symbol: str) -> Dict[str, Any]:
-        """Get RSI data specifically for 1h/4h/1d timeframes using the new get_real_rsi endpoint"""
+        """Get RSI data specifically for 1h/4h/1d timeframes using new get_real_rsi endpoint"""
         try:
             # Fetch real RSI data for 1h, 4h, and 1d timeframes concurrently
             tasks = [
@@ -275,7 +275,7 @@ class RawDataService:
             return {"1h": None, "4h": None, "1d": None}
 
     async def get_ema_multi_tf(self, symbol: str) -> Dict[str, Any]:
-        """Get EMA data for multiple timeframes using the new EMA indicators endpoint"""
+        """Get EMA data for multiple timeframes using new EMA indicators endpoint"""
         try:
             # Fetch EMA data for all required timeframes concurrently
             tasks = [
@@ -463,6 +463,7 @@ class RawDataService:
         if funding_history_data and funding_history_data.get("success"):
             data = safe_get(funding_history_data, "data", [])
             if data:
+                # Get last 5 entries and format them properly
                 funding_history = data[:5]  # Last 5 entries
         
         return {
@@ -636,7 +637,6 @@ class RawDataService:
         current_funding = safe_float(safe_get(funding, 'current_funding'))
         next_funding = safe_get(funding, 'next_funding', 'N/A')
         funding_history = safe_get(funding, 'funding_history', [])
-        history_text = 'No history available' if not funding_history else f'{len(funding_history)} entries'
         
         liquidations = safe_get(data, 'liquidations', {})
         liq_total = safe_float(safe_get(liquidations, 'total_24h'))
@@ -698,6 +698,28 @@ class RawDataService:
                 return "N/A"
             return f"Buy ${buy:.0f}M | Sell ${sell:.0f}M | Net ${net:+.0f}M"
         
+        # Helper function to format funding history
+        def format_funding_history(history_data):
+            if not history_data:
+                return "No history available"
+            
+            history_lines = []
+            for i, entry in enumerate(history_data[:5], 1):  # Last 5 entries
+                if isinstance(entry, dict):
+                    # Try different field names for funding rate
+                    rate = (safe_float(safe_get(entry, "fundingRate")) or 
+                           safe_float(safe_get(entry, "rate")) or 
+                           safe_float(safe_get(entry, "avgFundingRate")) or 0.0)
+                    
+                    # Try to get timestamp
+                    timestamp = safe_get(entry, "createTime") or safe_get(entry, "timestamp") or "Unknown"
+                    
+                    history_lines.append(f"  {i}. {timestamp}: {rate:+.4f}%")
+                else:
+                    history_lines.append(f"  {i}. Invalid entry")
+            
+            return "\n".join(history_lines) if history_lines else "No valid history data"
+        
         # Format support/resistance levels
         if support is None or resistance is None:
             levels_text = "Support/Resistance: N/A (not available for current plan)"
@@ -708,6 +730,9 @@ class RawDataService:
         
         # Format spot volume
         spot_volume_text = f"{spot24h_b:.2f}B" if spot24h is not None else "N/A"
+        
+        # Format funding history properly
+        funding_history_text = format_funding_history(funding_history)
         
         # Build EXACT format as required
         message = f"""[RAW DATA - {symbol} - REAL PRICE MULTI-TF]
@@ -747,7 +772,7 @@ Funding
 Current Funding: {current_funding:+.4f}%
 Next Funding : {next_funding}
 Funding History:
-{history_text}
+{funding_history_text}
 
 Liquidations
 Total 24H : {liq_total_m:.2f}M
