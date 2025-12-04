@@ -250,43 +250,50 @@ class RawDataService:
     async def get_rsi_1h_4h_1d(self, symbol: str) -> Dict[str, Any]:
         """Get RSI data specifically for 1h/4h/1d timeframes using new get_rsi_value endpoint"""
         try:
+            logger.info(f"[RAW] Fetching RSI for {symbol} on timeframes: 1h, 4h, 1d")
+
             # Fetch real RSI data for 1h, 4h, and 1d timeframes concurrently
             tasks = [
                 self.api.get_rsi_value(symbol, "1h", "Binance"),
                 self.api.get_rsi_value(symbol, "4h", "Binance"),
                 self.api.get_rsi_value(symbol, "1d", "Binance")
             ]
-            
+
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            
+
             # Process results for each timeframe
             rsi_data = {}
             timeframes = ["1h", "4h", "1d"]
-            
+
             for i, tf in enumerate(timeframes):
-                result = results[i] if not isinstance(results[i], Exception) else None
-                if result is not None:
-                    # get_rsi_value now returns float directly or None
-                    rsi_value = result
-                    if rsi_value is not None:
-                        # Validate RSI is in valid range (0-100)
-                        if 0 <= rsi_value <= 100:
-                            rsi_data[tf] = rsi_value
-                            logger.info(f"[RAW] Real RSI {tf} for {symbol}: {rsi_value:.2f}")
-                        else:
-                            rsi_data[tf] = None
-                            logger.warning(f"[RAW] Invalid RSI value {rsi_value} for {tf}, setting to None")
+                result = results[i]
+
+                # Check if result is an exception
+                if isinstance(result, Exception):
+                    logger.error(f"[RAW] RSI {tf} for {symbol} raised exception: {result}")
+                    rsi_data[tf] = None
+                    continue
+
+                # get_rsi_value returns float directly or None
+                rsi_value = result
+                if rsi_value is not None:
+                    # Validate RSI is in valid range (0-100)
+                    if 0 <= rsi_value <= 100:
+                        rsi_data[tf] = rsi_value
+                        logger.info(f"[RAW] ✓ RSI {tf} for {symbol}: {rsi_value:.2f}")
                     else:
                         rsi_data[tf] = None
-                        logger.info(f"[RAW] RSI {tf} for {symbol} unavailable")
+                        logger.warning(f"[RAW] Invalid RSI value {rsi_value} for {tf}, setting to None")
                 else:
                     rsi_data[tf] = None
-                    logger.warning(f"[RAW] Error getting RSI {tf} for {symbol}")
-            
+                    logger.warning(f"[RAW] RSI {tf} for {symbol} returned None - API may not have data")
+
             return rsi_data
-            
+
         except Exception as e:
             logger.error(f"[RAW] Error in get_rsi_1h_4h_1d for {symbol}: {e}")
+            import traceback
+            logger.error(f"[RAW] Traceback: {traceback.format_exc()}")
             # Return None data on error
             return {"1h": None, "4h": None, "1d": None}
 
@@ -502,22 +509,24 @@ class RawDataService:
         }
     
     def _extract_liquidation_data(self, liquidation_data: Dict) -> Dict[str, Any]:
-        """Extract liquidation data"""
+        """Extract liquidation data - ONLY last 24 hours (latest entry only)"""
         if not liquidation_data or not liquidation_data.get("success"):
             return {"total_24h": 0.0, "long_liq": 0.0, "short_liq": 0.0}
-        
+
         data = safe_get(liquidation_data, "data", [])
-        total_liq = 0.0
-        long_liq = 0.0
-        short_liq = 0.0
-        
-        for item in data:
-            if isinstance(item, dict):
-                # Use correct field names from aggregated history API response
-                long_liq += safe_float(safe_get(item, "aggregated_long_liquidation_usd"))
-                short_liq += safe_float(safe_get(item, "aggregated_short_liquidation_usd"))
-                total_liq += long_liq + short_liq
-        
+        if not data or not isinstance(data, list):
+            return {"total_24h": 0.0, "long_liq": 0.0, "short_liq": 0.0}
+
+        # FIX: Only use the LATEST entry for 24h data, not sum all entries
+        latest = data[-1] if data else {}
+        if not isinstance(latest, dict):
+            return {"total_24h": 0.0, "long_liq": 0.0, "short_liq": 0.0}
+
+        # Use correct field names from aggregated history API response
+        long_liq = safe_float(safe_get(latest, "aggregated_long_liquidation_usd"))
+        short_liq = safe_float(safe_get(latest, "aggregated_short_liquidation_usd"))
+        total_liq = long_liq + short_liq
+
         return {
             "total_24h": total_liq,
             "long_liq": long_liq,
@@ -527,32 +536,39 @@ class RawDataService:
     def _extract_long_short_data(self, ls_data: Dict) -> Dict[str, Any]:
         """Extract long/short ratio data"""
         if not ls_data or not ls_data.get("success"):
+            logger.warning(f"[RAW] Long/short data failed or empty: success={ls_data.get('success') if ls_data else None}")
             return {
                 "account_ratio_global": None,
                 "position_ratio_global": None,
                 "by_exchange": {"Binance": None, "Bybit": None, "OKX": None}
             }
-        
+
         data = safe_get(ls_data, "data", [])
         if not data:
+            logger.warning(f"[RAW] Long/short data array is empty")
             return {
                 "account_ratio_global": None,
                 "position_ratio_global": None,
                 "by_exchange": {"Binance": None, "Bybit": None, "OKX": None}
             }
-        
+
         # Get most recent data
         latest = data[-1] if data else {}
         if isinstance(latest, dict):
+            # Debug: Log available fields
+            logger.info(f"[RAW] Long/short latest entry fields: {list(latest.keys())}")
+
             account_ratio = safe_float(safe_get(latest, "longShortRatio"))
             position_ratio = safe_float(safe_get(latest, "positionLongShortRatio"))
-            
+
+            logger.info(f"[RAW] Long/short extracted values: account={account_ratio}, position={position_ratio}")
+
             # If values are 0.0 (default from safe_float), treat as missing data
             if account_ratio == 0.0:
                 account_ratio = None
             if position_ratio == 0.0:
                 position_ratio = None
-            
+
             return {
                 "account_ratio_global": account_ratio,
                 "position_ratio_global": position_ratio,
@@ -562,7 +578,8 @@ class RawDataService:
                     "OKX": None     # Would need separate calls
                 }
             }
-        
+
+        logger.warning(f"[RAW] Long/short latest entry is not a dict: {type(latest)}")
         return {
             "account_ratio_global": None,
             "position_ratio_global": None,
@@ -579,10 +596,11 @@ class RawDataService:
             "1h": default_tf.copy(),
             "4h": default_tf.copy()
         }
-        
+
         if not taker_data or not taker_data.get("success"):
+            logger.warning(f"[RAW] Taker flow data failed or empty: success={taker_data.get('success') if taker_data else None}")
             return result
-        
+
         # Check if we have summary data from get_taker_flow endpoint
         summary = safe_get(taker_data, "summary", {})
         if summary:
@@ -591,7 +609,9 @@ class RawDataService:
             total_sell = safe_float(safe_get(summary, "total_sell_volume")) / 1e6  # Convert to millions
             net_delta = safe_float(safe_get(summary, "net_delta")) / 1e6  # Convert to millions
             trend = safe_get(summary, "trend", "Neutral")
-            
+
+            logger.info(f"[RAW] Taker flow summary values: Buy={total_buy:.2f}M, Sell={total_sell:.2f}M, Net={net_delta:+.2f}M, Trend={trend}")
+
             # Only use data if we have valid values
             if total_buy > 0 or total_sell > 0:
                 flow_data = {
@@ -600,15 +620,19 @@ class RawDataService:
                     "net": net_delta,
                     "trend": trend
                 }
-                
+
+                # WARNING: This copies the SAME summary data to all timeframes
+                # This is a limitation - the summary is for the entire requested period (h1, 100 candles)
+                # not separated by 5m/15m/1h/4h timeframes
+                logger.warning(f"[RAW] NOTE: Using same taker flow summary for all timeframes (API limitation)")
                 result["5m"] = flow_data.copy()
                 result["15m"] = flow_data.copy()
                 result["1h"] = flow_data.copy()
                 result["4h"] = flow_data.copy()
-                
-                logger.info(f"[RAW] Extracted taker flow from summary: Buy {total_buy:.2f}M, Sell {total_sell:.2f}M, Net {net_delta:+.2f}M, Trend {trend}")
+
+                logger.info(f"[RAW] ✓ Extracted taker flow from summary: Buy {total_buy:.2f}M, Sell {total_sell:.2f}M, Net {net_delta:+.2f}M")
             else:
-                logger.info(f"[RAW] Taker flow summary has zero values, keeping N/A")
+                logger.warning(f"[RAW] Taker flow summary has zero values, keeping N/A")
             return result
         
         # Fallback to raw data processing for v2 taker buy-sell volume history
