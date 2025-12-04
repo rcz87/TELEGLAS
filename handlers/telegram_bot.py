@@ -777,6 +777,18 @@ class TelegramBot:
             symbol = safe_get(data, 'symbol', 'UNKNOWN').upper()
             timestamp = safe_get(data, 'timestamp', '')
             
+            # Improve timestamp formatting - convert ISO to readable format
+            if timestamp:
+                try:
+                    from datetime import datetime
+                    # Parse ISO timestamp and format as readable
+                    dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                    formatted_timestamp = dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+                except:
+                    formatted_timestamp = timestamp  # Fallback to original
+            else:
+                formatted_timestamp = ''
+            
             # Get general info
             general = safe_get(data, 'general_info', {})
             price_change = safe_get(data, 'price_change', {})
@@ -809,7 +821,7 @@ class TelegramBot:
             volume = safe_get(data, 'volume', {})
             futures_24h = safe_float(safe_get(volume, 'futures_24h'), 0.0)
             perp_24h = safe_float(safe_get(volume, 'perp_24h'), 0.0)
-            spot_24h = safe_float(safe_get(volume, 'spot_24h'), 0.0)
+            spot_24h = safe_get(volume, 'spot_24h')
             
             # Funding data
             funding = safe_get(data, 'funding', {})
@@ -839,33 +851,17 @@ class TelegramBot:
             tf_1h = safe_get(taker_flow, '1h', {})
             tf_4h = safe_get(taker_flow, '4h', {})
             
-            buy_5m = safe_float(safe_get(tf_5m, 'buy'), 0.0)
-            sell_5m = safe_float(safe_get(tf_5m, 'sell'), 0.0)
-            net_5m = safe_float(safe_get(tf_5m, 'net'), 0.0)
-            
-            buy_15m = safe_float(safe_get(tf_15m, 'buy'), 0.0)
-            sell_15m = safe_float(safe_get(tf_15m, 'sell'), 0.0)
-            net_15m = safe_float(safe_get(tf_15m, 'net'), 0.0)
-            
-            buy_1h = safe_float(safe_get(tf_1h, 'buy'), 0.0)
-            sell_1h = safe_float(safe_get(tf_1h, 'sell'), 0.0)
-            net_1h = safe_float(safe_get(tf_1h, 'net'), 0.0)
-            
-            buy_4h = safe_float(safe_get(tf_4h, 'buy'), 0.0)
-            sell_4h = safe_float(safe_get(tf_4h, 'sell'), 0.0)
-            net_4h = safe_float(safe_get(tf_4h, 'net'), 0.0)
-            
             # RSI data
             rsi = safe_get(data, 'rsi', {})
-            rsi_5m = safe_float(safe_get(rsi, '5m'), 0.0)
-            rsi_15m = safe_float(safe_get(rsi, '15m'), 0.0)
-            rsi_1h = safe_float(safe_get(rsi, '1h'), 0.0)
-            rsi_4h = safe_float(safe_get(rsi, '4h'), 0.0)
+            rsi_5m = safe_get(rsi, '5m')
+            rsi_15m = safe_get(rsi, '15m')
+            rsi_1h = safe_get(rsi, '1h')
+            rsi_4h = safe_get(rsi, '4h')
             
             # CG Levels data
             cg_levels = safe_get(data, 'cg_levels', {})
-            support_levels = safe_get(cg_levels, 'support', [0.0, 0.0, 0.0])
-            resistance_levels = safe_get(cg_levels, 'resistance', [0.0, 0.0, 0.0])
+            support_levels = safe_get(cg_levels, 'support')
+            resistance_levels = safe_get(cg_levels, 'resistance')
             
             # Format values with proper units
             total_oi_billion = total_oi / 1e9 if total_oi > 0 else 0.0
@@ -876,15 +872,36 @@ class TelegramBot:
             
             futures_volume_24h_billion = futures_24h / 1e9 if futures_24h > 0 else 0.0
             perp_volume_24h_billion = perp_24h / 1e9 if perp_24h > 0 else 0.0
-            spot_volume_24h_billion = spot_24h / 1e9 if spot_24h > 0 else 0.0
+            spot_volume_24h_billion = spot_24h / 1e9 if spot_24h and spot_24h > 0 else 0.0
             
             total_liq_24h_million = total_liq_24h / 1e6 if total_liq_24h > 0 else 0.0
             long_liq_24h_million = long_liq_24h / 1e6 if long_liq_24h > 0 else 0.0
             short_liq_24h_million = short_liq_24h / 1e6 if short_liq_24h > 0 else 0.0
             
+            # Helper function to format RSI values
+            def format_rsi(value):
+                return f"{value:.2f}" if value is not None else "N/A"
+            
+            # Helper function to format taker flow values
+            def format_taker_flow(tf_data):
+                buy = safe_get(tf_data, 'buy')
+                sell = safe_get(tf_data, 'sell')
+                net = safe_get(tf_data, 'net')
+                
+                if buy is None or sell is None or net is None:
+                    return "N/A"
+                return f"Buy ${buy:.0f}M | Sell ${sell:.0f}M | Net ${net:+.0f}M"
+            
             # Format support/resistance levels
-            support_str = ', '.join([f'${x:.2f}' for x in support_levels[:3]])
-            resistance_str = ', '.join([f'${x:.2f}' for x in resistance_levels[:3]])
+            if support_levels is None or resistance_levels is None:
+                levels_text = "Support/Resistance: N/A (not available for current plan)"
+            else:
+                support_str = ', '.join([f'${x:.2f}' for x in (support_levels[:3] if isinstance(support_levels, list) else [support_levels])])
+                resistance_str = ', '.join([f'${x:.2f}' for x in (resistance_levels[:3] if isinstance(resistance_levels, list) else [resistance_levels])])
+                levels_text = f"Support : {support_str}\nResistance: {resistance_str}"
+            
+            # Format spot volume
+            spot_volume_text = f"{spot_volume_24h_billion:.2f}B" if spot_24h is not None else "N/A"
             
             # Format funding history
             funding_history_text = 'No history available' if not funding_history else f'{len(funding_history)} entries'
@@ -895,7 +912,7 @@ class TelegramBot:
 Info Umum
 Symbol : {symbol}
 Timeframe : 1H
-Timestamp : {timestamp}
+Timestamp (UTC): {formatted_timestamp}
 Last Price: {last_price:.4f}
 Mark Price: {mark_price:.4f}
 Price Source: coinglass_futures
@@ -904,24 +921,24 @@ Price Change
 1H : {change_1h:+.2f}%
 4H : {change_4h:+.2f}%
 24H : {change_24h:+.2f}%
-High/Low 24H: ${low_24h:.4f} / ${high_24h:.4f}
-High/Low 7D : ${low_7d:.4f} / ${high_7d:.4f}
+High/Low 24H: {low_24h:.4f}/{high_24h:.4f}
+High/Low 7D : {low_7d:.4f}/{high_7d:.4f}
 
 Open Interest
-Total OI : ${total_oi_billion:.2f}B
+Total OI : {total_oi_billion:.2f}B
 OI 1H : {oi_change_1h:+.1f}%
 OI 24H : {oi_change_24h:+.1f}%
 
 OI per Exchange
-Binance : ${oi_binance_billion:.2f}B
-Bybit : ${oi_bybit_billion:.2f}B
-OKX : ${oi_okx_billion:.2f}B
-Others : ${oi_others_billion:.2f}B
+Binance : {oi_binance_billion:.2f}B
+Bybit : {oi_bybit_billion:.2f}B
+OKX : {oi_okx_billion:.2f}B
+Others : {oi_others_billion:.2f}B
 
 Volume
-Futures 24H: ${futures_volume_24h_billion:.2f}B
-Perp 24H : ${perp_volume_24h_billion:.2f}B
-Spot 24H : ${spot_volume_24h_billion:.2f}B
+Futures 24H: {futures_volume_24h_billion:.2f}B
+Perp 24H : {perp_volume_24h_billion:.2f}B
+Spot 24H : {spot_volume_text}
 
 Funding
 Current Funding: {current_funding:+.4f}%
@@ -930,9 +947,9 @@ Funding History:
 {funding_history_text}
 
 Liquidations
-Total 24H : ${total_liq_24h_million:.2f}M
-Long Liq : ${long_liq_24h_million:.2f}M
-Short Liq : ${short_liq_24h_million:.2f}M
+Total 24H : {total_liq_24h_million:.2f}M
+Long Liq : {long_liq_24h_million:.2f}M
+Short Liq : {short_liq_24h_million:.2f}M
 
 Long/Short Ratio
 Account Ratio (Global) : {account_ratio_global:.2f}
@@ -943,20 +960,19 @@ Bybit : {ls_bybit:.2f}
 OKX : {ls_okx:.2f}
 
 Taker Flow Multi-Timeframe (CVD Proxy)
-5M: Buy ${buy_5m:.0f}M | Sell ${sell_5m:.0f}M | Net ${net_5m:+.0f}M
-15M: Buy ${buy_15m:.0f}M | Sell ${sell_15m:.0f}M | Net ${net_15m:+.0f}M
-1H: Buy ${buy_1h:.0f}M | Sell ${sell_1h:.0f}M | Net ${net_1h:+.0f}M
-4H: Buy ${buy_4h:.0f}M | Sell ${sell_4h:.0f}M | Net ${net_4h:+.0f}M
+5M: {format_taker_flow(tf_5m)}
+15M: {format_taker_flow(tf_15m)}
+1H: {format_taker_flow(tf_1h)}
+4H: {format_taker_flow(tf_4h)}
 
 RSI Multi-Timeframe (14)
-5M : {rsi_5m:.2f}
-15M: {rsi_15m:.2f}
-1H : {rsi_1h:.2f}
-4H : {rsi_4h:.2f}
+5M : {format_rsi(rsi_5m)}
+15M: {format_rsi(rsi_15m)}
+1H : {format_rsi(rsi_1h)}
+4H : {format_rsi(rsi_4h)}
 
 CG Levels
-Support : {support_str}
-Resistance: {resistance_str}"""
+{levels_text}"""
             
             return message
             

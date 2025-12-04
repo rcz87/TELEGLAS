@@ -1,6 +1,6 @@
 import asyncio
 from typing import Dict, List, Optional, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from loguru import logger
 from services.coinglass_api import coinglass_api, safe_float, safe_int, safe_get, safe_list_get
 from config.settings import settings
@@ -72,7 +72,7 @@ class RawDataService:
                 # Aggregate ALL results into ONE Python dict as required with proper structure
                 raw = {
                     "symbol": resolved_symbol,
-                    "timestamp": datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3],
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                     "general_info": self._extract_general_info(market_data),
                     "price_change": self._extract_price_change_data(market_data),
                     "open_interest": self._extract_oi_data(market_data, oi_exchange_data),
@@ -161,15 +161,15 @@ class RawDataService:
     async def get_taker_volume(self, symbol: str) -> Dict[str, Any]:
         """Get taker volume data using v2 taker buy-sell volume history for better multi-timeframe analysis"""
         try:
-            # Try the new v2 taker buy-sell volume history endpoint for better multi-timeframe data
+            # Try new v2 taker buy-sell volume history endpoint for better multi-timeframe data
             result = await self.api.get_taker_buy_sell_volume_history(symbol, "Binance", "h1", 1000)
             
             if not result.get("success"):
-                # Fallback to the orderbook ask-bids history endpoint
+                # Fallback to orderbook ask-bids history endpoint
                 result = await self.api.get_orderbook_ask_bids_history(symbol, "Binance", "1h", 100)
             
             if not result.get("success"):
-                # Final fallback to the original endpoint if both new ones fail
+                # Final fallback to original endpoint if both new ones fail
                 result = await self.api.get_taker_buy_sell_volume_exchange_list(symbol)
             
             return result
@@ -203,21 +203,26 @@ class RawDataService:
                         latest = data[-1]
                         if isinstance(latest, dict):
                             rsi_value = safe_float(safe_get(latest, "rsi"))
-                            rsi_data[tf] = rsi_value
-                            logger.info(f"[RAW] RSI {tf} for {symbol}: {rsi_value:.2f}")
+                            # Store all RSI values (0-100), including 0.00 which is valid
+                            if 0 <= rsi_value <= 100:
+                                rsi_data[tf] = rsi_value
+                                logger.info(f"[RAW] RSI {tf} for {symbol}: {rsi_value:.2f}")
+                            else:
+                                rsi_data[tf] = None
+                                logger.warning(f"[RAW] Invalid RSI value {rsi_value} for {tf}, setting to None")
                         else:
-                            rsi_data[tf] = 0.0
+                            rsi_data[tf] = None
                     else:
-                        rsi_data[tf] = 0.0
+                        rsi_data[tf] = None
                 else:
-                    rsi_data[tf] = 0.0
+                    rsi_data[tf] = None
             
             return rsi_data
             
         except Exception as e:
             logger.error(f"[RAW] Error in get_rsi_multi_tf for {symbol}: {e}")
-            # Return empty data on error
-            return {"5m": 0.0, "15m": 0.0, "1h": 0.0, "4h": 0.0}
+            # Return None data on error
+            return {"5m": None, "15m": None, "1h": None, "4h": None}
     
     async def get_support_resistance(self, symbol: str) -> Dict[str, Any]:
         """Get support and resistance levels"""
@@ -379,11 +384,11 @@ class RawDataService:
     def _extract_volume_data(self, market_data: Dict) -> Dict[str, Any]:
         """Extract volume data from market data"""
         if not market_data or not market_data.get("success"):
-            return {"futures_24h": 0.0, "perp_24h": 0.0, "spot_24h": 0.0}
+            return {"futures_24h": 0.0, "perp_24h": 0.0, "spot_24h": None}
         
         data = safe_get(market_data, "data", [])
         if not data:
-            return {"futures_24h": 0.0, "perp_24h": 0.0, "spot_24h": 0.0}
+            return {"futures_24h": 0.0, "perp_24h": 0.0, "spot_24h": None}
         
         # Find matching symbol in the list
         target_symbol = safe_get(market_data, "symbol", "")
@@ -397,15 +402,15 @@ class RawDataService:
                 return {
                     "futures_24h": total_volume,
                     "perp_24h": total_volume,  # Use same as futures for now
-                    "spot_24h": 0.0  # Would need separate endpoint
+                    "spot_24h": None  # Would need separate endpoint, return None instead of 0.0
                 }
         
-        return {"futures_24h": 0.0, "perp_24h": 0.0, "spot_24h": 0.0}
+        return {"futures_24h": 0.0, "perp_24h": 0.0, "spot_24h": None}
     
     def _extract_funding_data(self, funding_data: Dict, funding_history_data: Dict) -> Dict[str, Any]:
         """Extract funding rate data"""
         current_funding = 0.0
-        next_funding = "00:00 UTC"
+        next_funding = "N/A"  # Default to N/A instead of hardcoded time
         
         if funding_data and funding_data.get("success"):
             data = safe_get(funding_data, "data", [])
@@ -486,9 +491,9 @@ class RawDataService:
         }
     
     def _extract_taker_flow_data(self, taker_data: Dict) -> Dict[str, Any]:
-        """Extract taker flow data for multiple timeframes from orderbook ask-bids history"""
-        # Default empty data
-        default_tf = {"buy": 0.0, "sell": 0.0, "net": 0.0}
+        """Extract taker flow data for multiple timeframes from taker buy-sell volume history"""
+        # Default empty data with None for missing data
+        default_tf = {"buy": None, "sell": None, "net": None}
         result = {
             "5m": default_tf.copy(),
             "15m": default_tf.copy(),
@@ -504,34 +509,30 @@ class RawDataService:
             return result
         
         try:
-            # The orderbook data gives us bids and asks volume in USD
-            # We can use this as a proxy for taker flow
-            # More buying pressure = higher bids volume
-            # More selling pressure = higher asks volume
-            
-            # Process the most recent data for different timeframes
-            # For now, we'll use the latest available data for all timeframes
+            # The taker buy-sell volume data gives us direct buy/sell volumes
             if data:
                 latest = data[-1]  # Most recent data
                 if isinstance(latest, dict):
-                    bids_usd = safe_float(safe_get(latest, "bids_usd")) / 1e6  # Convert to millions
-                    asks_usd = safe_float(safe_get(latest, "asks_usd")) / 1e6  # Convert to millions
-                    net_flow = bids_usd - asks_usd
+                    buy_usd = safe_float(safe_get(latest, "buyVolume")) / 1e6  # Convert to millions
+                    sell_usd = safe_float(safe_get(latest, "sellVolume")) / 1e6  # Convert to millions
+                    net_flow = buy_usd - sell_usd
                     
-                    # Use the same data for all timeframes as a proxy
-                    # In a real implementation, you'd aggregate by different time windows
-                    flow_data = {
-                        "buy": bids_usd,
-                        "sell": asks_usd,
-                        "net": net_flow
-                    }
-                    
-                    result["5m"] = flow_data.copy()
-                    result["15m"] = flow_data.copy()
-                    result["1h"] = flow_data.copy()
-                    result["4h"] = flow_data.copy()
-                    
-                    logger.info(f"[RAW] Extracted taker flow: Buy {bids_usd:.2f}M, Sell {asks_usd:.2f}M, Net {net_flow:+.2f}M")
+                    # Only use data if we have valid values
+                    if buy_usd > 0 or sell_usd > 0:
+                        flow_data = {
+                            "buy": buy_usd,
+                            "sell": sell_usd,
+                            "net": net_flow
+                        }
+                        
+                        result["5m"] = flow_data.copy()
+                        result["15m"] = flow_data.copy()
+                        result["1h"] = flow_data.copy()
+                        result["4h"] = flow_data.copy()
+                        
+                        logger.info(f"[RAW] Extracted taker flow: Buy {buy_usd:.2f}M, Sell {sell_usd:.2f}M, Net {net_flow:+.2f}M")
+                    else:
+                        logger.info(f"[RAW] Taker flow data has zero values, keeping N/A")
         
         except Exception as e:
             logger.error(f"[RAW] Error extracting taker flow data: {e}")
@@ -540,20 +541,20 @@ class RawDataService:
     
     def _extract_rsi_data(self, rsi_data: Dict) -> Dict[str, Any]:
         """Extract RSI data for multiple timeframes"""
-        # Default empty data
+        # Return the RSI data directly, preserving None values
         return {
-            "5m": 0.0,
-            "15m": 0.0,
-            "1h": 0.0,
-            "4h": 0.0
+            "5m": safe_get(rsi_data, "5m", None),
+            "15m": safe_get(rsi_data, "15m", None),
+            "1h": safe_get(rsi_data, "1h", None),
+            "4h": safe_get(rsi_data, "4h", None)
         }
     
     def _extract_levels_data(self, levels_data: Dict) -> Dict[str, Any]:
         """Extract support/resistance levels"""
-        # Default empty data
+        # Default empty data with None to indicate not available
         return {
-            "support": [0.0, 0.0, 0.0],
-            "resistance": [0.0, 0.0, 0.0]
+            "support": None,
+            "resistance": None
         }
     
     def format_for_telegram(self, data: Dict[str, Any]) -> str:
@@ -567,14 +568,6 @@ class RawDataService:
         
         general_info = safe_get(data, 'general_info', {})
         price_change = safe_get(data, 'price_change', {})
-        oi = safe_get(data, 'open_interest', {})
-        volume = safe_get(data, 'volume', {})
-        funding = safe_get(data, 'funding', {})
-        liquidations = safe_get(data, 'liquidations', {})
-        long_short = safe_get(data, 'long_short_ratio', {})
-        taker_flow = safe_get(data, 'taker_flow', {})
-        rsi = safe_get(data, 'rsi', {})
-        levels = safe_get(data, 'cg_levels', {})
         
         # Extract individual values
         last_price = safe_float(safe_get(general_info, 'last_price'))
@@ -588,24 +581,29 @@ class RawDataService:
         hi7d = safe_float(safe_get(price_change, 'high_7d'))
         lo7d = safe_float(safe_get(price_change, 'low_7d'))
         
-        oi_total = safe_float(safe_get(oi, 'total_oi'))
+        oi = safe_get(data, 'open_interest', {})
+        total_oi = safe_float(safe_get(oi, 'total_oi'))
         oi1h = safe_float(safe_get(oi, 'oi_1h'))
         oi24h = safe_float(safe_get(oi, 'oi_24h'))
         per_exchange = safe_get(oi, 'per_exchange', {})
         
+        volume = safe_get(data, 'volume', {})
         fut24h = safe_float(safe_get(volume, 'futures_24h'))
         perp24h = safe_float(safe_get(volume, 'perp_24h'))
-        spot24h = safe_float(safe_get(volume, 'spot_24h'))
+        spot24h = safe_get(volume, 'spot_24h')
         
+        funding = safe_get(data, 'funding', {})
         current_funding = safe_float(safe_get(funding, 'current_funding'))
         next_funding = safe_get(funding, 'next_funding', 'N/A')
         funding_history = safe_get(funding, 'funding_history', [])
         history_text = 'No history available' if not funding_history else f'{len(funding_history)} entries'
         
+        liquidations = safe_get(data, 'liquidations', {})
         liq_total = safe_float(safe_get(liquidations, 'total_24h'))
         liq_long = safe_float(safe_get(liquidations, 'long_liq'))
         liq_short = safe_float(safe_get(liquidations, 'short_liq'))
         
+        long_short = safe_get(data, 'long_short_ratio', {})
         account_ratio = safe_float(safe_get(long_short, 'account_ratio_global'))
         position_ratio = safe_float(safe_get(long_short, 'position_ratio_global'))
         ls_exchanges = safe_get(long_short, 'by_exchange', {})
@@ -614,20 +612,23 @@ class RawDataService:
         ls_okx = safe_float(safe_get(ls_exchanges, 'OKX'))
         
         # Taker flow
+        taker_flow = safe_get(data, 'taker_flow', {})
         tf_5m = safe_get(taker_flow, '5m', {})
         tf_15m = safe_get(taker_flow, '15m', {})
         tf_1h = safe_get(taker_flow, '1h', {})
         tf_4h = safe_get(taker_flow, '4h', {})
         
         # RSI
-        rsi_5m = safe_float(safe_get(rsi, '5m'))
-        rsi_15m = safe_float(safe_get(rsi, '15m'))
-        rsi_1h = safe_float(safe_get(rsi, '1h'))
-        rsi_4h = safe_float(safe_get(rsi, '4h'))
+        rsi = safe_get(data, 'rsi', {})
+        rsi_5m = safe_get(rsi, '5m')
+        rsi_15m = safe_get(rsi, '15m')
+        rsi_1h = safe_get(rsi, '1h')
+        rsi_4h = safe_get(rsi, '4h')
         
         # Levels
-        support = safe_get(levels, 'support', [0, 0, 0])
-        resistance = safe_get(levels, 'resistance', [0, 0, 0])
+        levels = safe_get(data, 'cg_levels', {})
+        support = safe_get(levels, 'support')
+        resistance = safe_get(levels, 'resistance')
         
         # Format with proper units
         oi_total_b = oi_total / 1e9 if oi_total > 0 else 0.0
@@ -638,11 +639,36 @@ class RawDataService:
         
         fut24h_b = fut24h / 1e9 if fut24h > 0 else 0.0
         perp24h_b = perp24h / 1e9 if perp24h > 0 else 0.0
-        spot24h_b = spot24h / 1e9 if spot24h > 0 else 0.0
+        spot24h_b = spot24h / 1e9 if spot24h and spot24h > 0 else 0.0
         
         liq_total_m = liq_total / 1e6 if liq_total > 0 else 0.0
         liq_long_m = liq_long / 1e6 if liq_long > 0 else 0.0
         liq_short_m = liq_short / 1e6 if liq_short > 0 else 0.0
+        
+        # Helper function to format RSI values
+        def format_rsi(value):
+            return f"{value:.2f}" if value is not None else "N/A"
+        
+        # Helper function to format taker flow values
+        def format_taker_flow(tf_data):
+            buy = safe_get(tf_data, 'buy')
+            sell = safe_get(tf_data, 'sell')
+            net = safe_get(tf_data, 'net')
+            
+            if buy is None or sell is None or net is None:
+                return "N/A"
+            return f"Buy ${buy:.0f}M | Sell ${sell:.0f}M | Net ${net:+.0f}M"
+        
+        # Format support/resistance levels
+        if support is None or resistance is None:
+            levels_text = "Support/Resistance: N/A (not available for current plan)"
+        else:
+            support_str = ', '.join([f'${x:.2f}' for x in (support[:3] if isinstance(support, list) else [support])])
+            resistance_str = ', '.join([f'${x:.2f}' for x in (resistance[:3] if isinstance(resistance, list) else [resistance])])
+            levels_text = f"Support : {support_str}\nResistance: {resistance_str}"
+        
+        # Format spot volume
+        spot_volume_text = f"{spot24h_b:.2f}B" if spot24h is not None else "N/A"
         
         # Build EXACT format as required
         message = f"""[RAW DATA - {symbol} - REAL PRICE MULTI-TF]
@@ -650,7 +676,7 @@ class RawDataService:
 Info Umum
 Symbol : {symbol}
 Timeframe : 1H
-Timestamp : {timestamp}
+Timestamp (UTC): {timestamp}
 Last Price: {last_price:.4f}
 Mark Price: {mark_price:.4f}
 Price Source: coinglass_futures
@@ -676,7 +702,7 @@ Others : {oi_others_b:.2f}B
 Volume
 Futures 24H: {fut24h_b:.2f}B
 Perp 24H : {perp24h_b:.2f}B
-Spot 24H : {spot24h_b:.2f}B
+Spot 24H : {spot_volume_text}
 
 Funding
 Current Funding: {current_funding:+.4f}%
@@ -698,20 +724,19 @@ Bybit : {ls_bybit:.2f}
 OKX : {ls_okx:.2f}
 
 Taker Flow Multi-Timeframe (CVD Proxy)
-5M: Buy ${safe_float(safe_get(tf_5m, 'buy')):.0f}M | Sell ${safe_float(safe_get(tf_5m, 'sell')):.0f}M | Net ${safe_float(safe_get(tf_5m, 'net')):+.0f}M
-15M: Buy ${safe_float(safe_get(tf_15m, 'buy')):.0f}M | Sell ${safe_float(safe_get(tf_15m, 'sell')):.0f}M | Net ${safe_float(safe_get(tf_15m, 'net')):+.0f}M
-1H: Buy ${safe_float(safe_get(tf_1h, 'buy')):.0f}M | Sell ${safe_float(safe_get(tf_1h, 'sell')):.0f}M | Net ${safe_float(safe_get(tf_1h, 'net')):+.0f}M
-4H: Buy ${safe_float(safe_get(tf_4h, 'buy')):.0f}M | Sell ${safe_float(safe_get(tf_4h, 'sell')):.0f}M | Net ${safe_float(safe_get(tf_4h, 'net')):+.0f}M
+5M: {format_taker_flow(tf_5m)}
+15M: {format_taker_flow(tf_15m)}
+1H: {format_taker_flow(tf_1h)}
+4H: {format_taker_flow(tf_4h)}
 
 RSI Multi-Timeframe (14)
-5M : {rsi_5m:.2f}
-15M: {rsi_15m:.2f}
-1H : {rsi_1h:.2f}
-4H : {rsi_4h:.2f}
+5M : {format_rsi(rsi_5m)}
+15M: {format_rsi(rsi_15m)}
+1H : {format_rsi(rsi_1h)}
+4H : {format_rsi(rsi_4h)}
 
 CG Levels
-Support : {', '.join([f'{x:.2f}' for x in support])}
-Resistance: {', '.join([f'{x:.2f}' for x in resistance])}"""
+{levels_text}"""
         
         return message
 
