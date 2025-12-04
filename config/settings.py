@@ -1,9 +1,20 @@
 import os
 from dotenv import load_dotenv
 from typing import List
+from pathlib import Path
 
-# Load environment variables
-load_dotenv()
+# Get the project root directory
+PROJECT_ROOT = Path(__file__).parent.parent
+
+# Load environment variables from project root with explicit override
+env_file = PROJECT_ROOT / '.env'
+if env_file.exists():
+    load_dotenv(env_file, override=True)
+    print(f"Loaded .env from: {env_file}")
+else:
+    # Fallback to default loading
+    load_dotenv()
+    print("Loaded .env using default search paths")
 
 class Settings:
     """Application settings and configuration"""

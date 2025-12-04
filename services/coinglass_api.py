@@ -981,7 +981,7 @@ class CoinGlassAPI:
         Uses /api/futures/indicators/rsi (CoinGlass v4).
         Returns float or None on error.
         """
-        # Use normalize_future_symbol to ensure proper format
+        # Use normalize_future_symbol to ensure proper format (ETH → ETHUSDT)
         cg_symbol = normalize_future_symbol(symbol)
 
         path = "/api/futures/indicators/rsi"
@@ -1003,9 +1003,16 @@ class CoinGlassAPI:
             logger.warning(f"[RSI] Empty RSI data for {cg_symbol} {interval}")
             return None
 
-        last = data[-1]
+        # FIXED: Select the MOST RECENT VALID RSI entry
+        # NEVER use rsi_data[-1] because the last element often contains invalid or null values
+        valid_items = [x for x in data if x.get("rsi_value") is not None]
+        if not valid_items:
+            logger.warning(f"[RSI] No valid RSI values for {cg_symbol} {interval}")
+            return None
+            
+        latest_valid = valid_items[-1]
         try:
-            return float(last["rsi_value"])
+            return float(latest_valid["rsi_value"])
         except Exception as e:
             logger.warning(f"[RSI] Failed to parse RSI value for {cg_symbol} {interval}: {e}")
             return None

@@ -678,7 +678,7 @@ class RawDataService:
     
     def _extract_rsi_data(self, rsi_data: Dict) -> Dict[str, Any]:
         """Extract RSI data for multiple timeframes"""
-        # Return the RSI data directly, preserving None values
+        # Return RSI data directly, preserving None values
         return {
             "5m": safe_get(rsi_data, "5m", None),
             "15m": safe_get(rsi_data, "15m", None),
