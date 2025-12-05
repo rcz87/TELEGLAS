@@ -910,6 +910,22 @@ class TelegramBot:
             ls_bybit = safe_get(ls_by_exchange, 'Bybit')
             ls_okx = safe_get(ls_by_exchange, 'OKX')
             
+            # Orderbook data - fetch if not present
+            orderbook_data = safe_get(data, 'orderbook')
+            if orderbook_data is None:
+                # Try to fetch orderbook data on-demand
+                try:
+                    from services.coinglass_api import coinglass_api
+                    base_symbol, futures_pair = coinglass_api.resolve_orderbook_symbols(symbol)
+                    orderbook_data = await coinglass_api.get_orderbook_snapshot(base_symbol, "Binance")
+                except:
+                    orderbook_data = None
+            
+            # Extract orderbook information
+            orderbook_timestamp = safe_get(orderbook_data, 'snapshot_timestamp') if orderbook_data else None
+            top_bids = safe_get(orderbook_data, 'top_bids', []) if orderbook_data else []
+            top_asks = safe_get(orderbook_data, 'top_asks', []) if orderbook_data else []
+            
             # Taker Flow data
             taker_flow = safe_get(data, 'taker_flow', {})
             tf_5m = safe_get(taker_flow, '5m', {})
@@ -1082,7 +1098,12 @@ RSI (1h/4h/1d)
 1D : {format_rsi(rsi_1d_new)}
 
 CG Levels
-{levels_text}"""
+{levels_text}
+
+Orderbook Snapshot
+Timestamp: {orderbook_timestamp if orderbook_timestamp else 'N/A'}
+Top 5 Bids: {', '.join([f'${bid:.2f}' if isinstance(bid, (int, float)) else str(bid) for bid in top_bids[:5]]) if top_bids else 'N/A'}
+Top 5 Asks: {', '.join([f'${ask:.2f}' if isinstance(ask, (int, float)) else str(ask) for ask in top_asks[:5]]) if top_asks else 'N/A'}"""
             
             return message
             

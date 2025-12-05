@@ -39,7 +39,8 @@ class RawDataService:
                     self.get_taker_volume(resolved_symbol),    # get_taker_volume
                     self.get_rsi_multi_tf(resolved_symbol),   # get_rsi_multi_tf
                     self.get_rsi_1h_4h_1d(resolved_symbol),   # get_rsi_1h_4h_1d (NEW)
-                    self.get_support_resistance(resolved_symbol) # get_support_resistance
+                    self.get_support_resistance(resolved_symbol), # get_support_resistance
+                    self.get_orderbook_snapshot(resolved_symbol)   # get_orderbook_snapshot (NEW)
                 ]
                 
                 results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -56,6 +57,7 @@ class RawDataService:
                 rsi_data = results[8] if not isinstance(results[8], Exception) else {}
                 rsi_1h_4h_1d_data = results[9] if not isinstance(results[9], Exception) else {}
                 levels_data = results[10] if not isinstance(results[10], Exception) else {}
+                orderbook_data = results[11] if not isinstance(results[11], Exception) else {}
                 
                 # Add symbol to each data dict for proper extraction
                 if market_data and isinstance(market_data, dict):
@@ -85,7 +87,8 @@ class RawDataService:
                     "taker_flow": self._extract_taker_flow_data(taker_data),
                     "rsi": self._extract_rsi_data(rsi_data),
                     "rsi_1h_4h_1d": rsi_1h_4h_1d_data,  # NEW: Add 1h/4h/1d RSI data
-                    "cg_levels": self._extract_levels_data(levels_data)
+                    "cg_levels": self._extract_levels_data(levels_data),
+                    "orderbook": orderbook_data  # NEW: Add orderbook data
                 }
                 
                 # DEBUG LOGGING: Log key values for VPS validation
