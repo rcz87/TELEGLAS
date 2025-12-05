@@ -564,11 +564,11 @@ class RawDataService:
         
         if isinstance(ls_data, dict):
             # Check if it's the new format from our fixed get_global_long_short_ratio
-            if "long_percent" in ls_data or "short_percent" in ls_data or "ratio_global" in ls_data:
-                # New format: {"long_percent": X, "short_percent": Y, "ratio_global": Z}
-                account_ratio = safe_float(ls_data.get("ratio_global"))
+            if "long_percent" in ls_data or "short_percent" in ls_data or "long_short_ratio" in ls_data:
+                # New format: {"long_percent": X, "short_percent": Y, "long_short_ratio": Z}
+                account_ratio = safe_float(ls_data.get("long_short_ratio"))
                 
-                logger.info(f"[RAW] ✓ Long/short extracted from new format: ratio_global={account_ratio}")
+                logger.info(f"[RAW] ✓ Long/short extracted from new format: long_short_ratio={account_ratio}")
                 
                 # If ratio is 0.0 (default from safe_float), treat as missing data
                 if account_ratio == 0.0:
