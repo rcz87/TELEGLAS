@@ -181,23 +181,53 @@ class RawDataService:
             return {}
     
     async def get_taker_volume(self, symbol: str) -> Dict[str, Any]:
-        """Get taker volume data using new get_taker_flow endpoint for CVD analysis"""
+        """Get taker volume data for multiple timeframes using different intervals"""
         try:
-            # Use the new get_taker_flow endpoint that processes v2 taker buy-sell volume data
-            result = await self.api.get_taker_flow(symbol, "Binance", "h1", 100)
+            # Fetch taker flow data for different timeframes concurrently
+            tasks = [
+                self.api.get_taker_flow(symbol, "Binance", "5m", 100),   # 5M timeframe
+                self.api.get_taker_flow(symbol, "Binance", "15m", 100),  # 15M timeframe  
+                self.api.get_taker_flow(symbol, "Binance", "1h", 100),   # 1H timeframe
+                self.api.get_taker_flow(symbol, "Binance", "4h", 100)    # 4H timeframe
+            ]
             
-            if not result.get("success"):
-                # Fallback to v2 taker buy-sell volume history endpoint
-                result = await self.api.get_taker_buy_sell_volume_history(symbol, "Binance", "h1", 1000)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
             
-            if not result.get("success"):
-                # Final fallback to orderbook ask-bids history endpoint
-                result = await self.api.get_orderbook_ask_bids_history(symbol, "Binance", "1h", 100)
+            # Process results for each timeframe
+            taker_data = {}
+            timeframes = ["5m", "15m", "1h", "4h"]
             
-            return result
+            for i, tf in enumerate(timeframes):
+                result = results[i]
+                
+                if isinstance(result, Exception):
+                    logger.error(f"[RAW] Taker flow {tf} for {symbol} raised exception: {result}")
+                    taker_data[tf] = {"success": False, "data": []}
+                    continue
+                
+                if result and result.get("success"):
+                    taker_data[tf] = result
+                    logger.info(f"[RAW] ✓ Taker flow {tf} for {symbol}: success")
+                else:
+                    # Fallback to v2 taker buy-sell volume history for this timeframe
+                    try:
+                        # Convert timeframe format for v2 API
+                        v2_interval = tf if tf in ["5m", "15m", "1h"] else "h4"
+                        fallback_result = await self.api.get_taker_buy_sell_volume_history(symbol, "Binance", v2_interval, 1000)
+                        taker_data[tf] = fallback_result if fallback_result.get("success") else {"success": False, "data": []}
+                    except:
+                        taker_data[tf] = {"success": False, "data": []}
+            
+            # Return combined result with timeframe-specific data
+            return {
+                "success": True,
+                "timeframe_data": taker_data,
+                "data": []  # Empty data array for compatibility
+            }
+            
         except Exception as e:
             logger.error(f"[RAW] Error in get_taker_volume for {symbol}: {e}")
-            return {}
+            return {"success": False, "timeframe_data": {}, "data": []}
     
     async def get_rsi_multi_tf(self, symbol: str) -> Dict[str, Any]:
         """Get RSI data for multiple timeframes using new indicators endpoint"""
@@ -668,7 +698,58 @@ class RawDataService:
             logger.warning(f"[RAW] Taker flow data failed or empty: success={taker_data.get('success') if taker_data else None}")
             return result
 
-        # Check if we have summary data from get_taker_flow endpoint
+        # NEW: Check if we have timeframe-specific data
+        timeframe_data = safe_get(taker_data, "timeframe_data", {})
+        if timeframe_data:
+            logger.info(f"[RAW] Processing timeframe-specific taker flow data")
+            
+            timeframes = ["5m", "15m", "1h", "4h"]
+            for tf in timeframes:
+                tf_result = timeframe_data.get(tf, {})
+                
+                if tf_result and tf_result.get("success"):
+                    # Try to get summary from this timeframe's data
+                    summary = safe_get(tf_result, "summary", {})
+                    if summary:
+                        total_buy = safe_float(safe_get(summary, "total_buy_volume")) / 1e6  # Convert to millions
+                        total_sell = safe_float(safe_get(summary, "total_sell_volume")) / 1e6  # Convert to millions
+                        net_delta = safe_float(safe_get(summary, "net_delta")) / 1e6  # Convert to millions
+                        trend = safe_get(summary, "trend", "Neutral")
+
+                        # Only use data if we have valid values
+                        if total_buy > 0 or total_sell > 0:
+                            result[tf] = {
+                                "buy": total_buy,
+                                "sell": total_sell,
+                                "net": net_delta,
+                                "trend": trend
+                            }
+                            logger.info(f"[RAW] ✓ Taker flow {tf}: Buy {total_buy:.2f}M, Sell {total_sell:.2f}M, Net {net_delta:+.2f}M")
+                        else:
+                            logger.warning(f"[RAW] Taker flow {tf} has zero values")
+                    else:
+                        # Fallback to raw data for this timeframe
+                        data = safe_get(tf_result, "data", [])
+                        if data and isinstance(data, list) and data:
+                            latest = data[-1]
+                            if isinstance(latest, dict):
+                                buy_usd = safe_float(safe_get(latest, "taker_buy_volume_usd")) / 1e6
+                                sell_usd = safe_float(safe_get(latest, "taker_sell_volume_usd")) / 1e6
+                                net_flow = buy_usd - sell_usd
+                                
+                                if buy_usd > 0 or sell_usd > 0:
+                                    result[tf] = {
+                                        "buy": buy_usd,
+                                        "sell": sell_usd,
+                                        "net": net_flow
+                                    }
+                                    logger.info(f"[RAW] ✓ Taker flow {tf} (raw): Buy {buy_usd:.2f}M, Sell {sell_usd:.2f}M, Net {net_flow:+.2f}M")
+                else:
+                    logger.warning(f"[RAW] Taker flow {tf} failed or empty")
+            
+            return result
+
+        # Fallback to old logic for backward compatibility
         summary = safe_get(taker_data, "summary", {})
         if summary:
             # Use summary data from get_taker_flow endpoint
