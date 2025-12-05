@@ -516,8 +516,24 @@ class RawDataService:
         if funding_history_data and funding_history_data.get("success"):
             data = safe_get(funding_history_data, "data", [])
             if data:
-                # Get last 5 entries and format them properly
-                funding_history = data[:5]  # Last 5 entries
+                # FIXED: Get last 5 entries from the END (most recent), not beginning
+                # Also filter out entries with 0.0000% values
+                recent_data = data[-5:] if len(data) >= 5 else data
+                funding_history = []
+                
+                for entry in recent_data:
+                    if isinstance(entry, dict):
+                        # Try different field names for funding rate
+                        rate = (safe_float(safe_get(entry, "fundingRate")) or 
+                               safe_float(safe_get(entry, "rate")) or 
+                               safe_float(safe_get(entry, "avgFundingRate")) or
+                               safe_float(safe_get(entry, "funding_rate")) or 0.0)
+                        
+                        # Only include non-zero rates
+                        if rate != 0.0:
+                            funding_history.append(entry)
+                
+                logger.info(f"[RAW] Found {len(funding_history)} valid funding history entries (filtered out 0.0000% values)")
         
         return {
             "current_funding": current_funding,
