@@ -419,6 +419,9 @@ class CoinGlassAPI:
                 "interval": "h1"  # IMPORTANT: Must be "h1", not "1h"
             }
             
+            # DEBUG LOGGING: Log the exact request being made
+            logger.debug(f"[COINGLASS REQUEST] /api/futures/global-long-short-account-ratio/history params={params}")
+            
             result = await self._make_request(
                 "/api/futures/global-long-short-account-ratio/history",
                 params
@@ -1022,6 +1025,9 @@ class CoinGlassAPI:
             "limit": limit,
         }
 
+        # DEBUG LOGGING: Log the exact request being made
+        logger.debug(f"[COINGLASS REQUEST] {path} params={params}")
+
         resp = await self._make_request(path, params)
 
         if not resp or not resp.get("success"):
@@ -1068,6 +1074,9 @@ class CoinGlassAPI:
             "interval": "1d",
             "limit": 1,
         }
+
+        # DEBUG LOGGING: Log the exact request being made
+        logger.debug(f"[COINGLASS REQUEST] {path} params={params}")
 
         resp = await self._make_request(path, params)
 
@@ -1300,11 +1309,8 @@ class CoinGlassAPI:
                 "limit": limit
             }
             
-            # DEBUG LOGGING
-            logger.warning(
-                "[DEBUG OB_HISTORY] base=%s pair=%s params=%s",
-                base_symbol, futures_pair, params
-            )
+            # DEBUG LOGGING: Log the exact request being made
+            logger.debug(f"[COINGLASS REQUEST] /api/futures/orderbook/history params={params}")
             
             result = await self._make_request("/api/futures/orderbook/history", params)
             if result.get("success"):
@@ -1336,11 +1342,8 @@ class CoinGlassAPI:
                 "range": range_param  # Add range parameter
             }
             
-            # DEBUG LOGGING
-            logger.warning(
-                "[DEBUG OB_ASK_BIDS] base=%s pair=%s params=%s",
-                base_symbol, futures_pair, params
-            )
+            # DEBUG LOGGING: Log the exact request being made
+            logger.debug(f"[COINGLASS REQUEST] /api/futures/orderbook/ask-bids-history params={params}")
             
             result = await self._make_request("/api/futures/orderbook/ask-bids-history", params)
             if result.get("success"):
@@ -1369,11 +1372,8 @@ class CoinGlassAPI:
                 "limit": limit
             }
             
-            # DEBUG LOGGING
-            logger.warning(
-                "[DEBUG OB_AGG] base=%s params=%s",
-                base_symbol, params
-            )
+            # DEBUG LOGGING: Log the exact request being made
+            logger.debug(f"[COINGLASS REQUEST] /api/futures/orderbook/aggregated-ask-bids-history params={params}")
             
             result = await self._make_request("/api/futures/orderbook/aggregated-ask-bids-history", params)
             if result.get("success"):
