@@ -169,9 +169,10 @@ class RawDataService:
             from services.coinglass_api import normalize_future_symbol
             futures_pair = normalize_future_symbol(symbol)
             
-            result = await self.api.get_global_long_short_ratio(futures_pair, "Binance")
+            # FIXED: Correct parameter order - symbol first, then interval, then exchange
+            result = await self.api.get_global_long_short_ratio(futures_pair, "h1", "Binance")
             
-            # DEBUG LOGGING: Log the raw result for verification
+            # DEBUG LOGGING: Log raw result for verification
             logger.info(f"[DEBUG LS] Raw global long/short for {symbol}: {result}")
             
             return result
