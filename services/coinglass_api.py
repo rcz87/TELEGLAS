@@ -400,12 +400,13 @@ class CoinGlassAPI:
             logger.error(f"[COINGLASS] Failed endpoint /api/etf/bitcoin/flow-history reason: {e}")
             return {"success": False, "data": []}
 
-    async def get_global_long_short_ratio(self, symbol: str, ex_name: str = "Binance") -> Optional[Dict[str, Any]]:
+    async def get_global_long_short_ratio(self, symbol: str, interval: str = "h1", ex_name: str = "Binance") -> Optional[Dict[str, Any]]:
         """
         Get global long/short account ratio history using authenticated v4 endpoint
         
         Args:
             symbol: base symbol (e.g., "BTC", "ETH") - will be normalized to futures_pair
+            interval: time interval (e.g., "h1", "h4", "d1") - default "h1"
             ex_name: exchange name (default: "Binance")
             
         Returns:
@@ -419,7 +420,7 @@ class CoinGlassAPI:
             params = {
                 "exchange": ex_name,
                 "symbol": futures_symbol,  # Use futures_pair (BTCUSDT)
-                "interval": "h1",  # IMPORTANT: Must be "h1", not "1h"
+                "interval": interval,  # IMPORTANT: Must be "h1", not "1h"
                 "limit": 100  # Add limit parameter
             }
             
@@ -432,7 +433,7 @@ class CoinGlassAPI:
             )
             
             # Check if request was successful
-            if result.get("success") and result.get("code") == "0":
+            if result.get("success"):
                 data = result.get("data") or []
                 if not data:
                     logger.warning(f"[COINGLASS] No data returned for global long/short ratio for {futures_symbol}")
