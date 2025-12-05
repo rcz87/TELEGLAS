@@ -657,23 +657,24 @@ class CoinGlassAPI:
     async def get_funding_rate_ohlc_history(
         self,
         symbol: str,
-        interval: str = "1d",
+        interval: str = "8h",
         start_time: Optional[int] = None,
         end_time: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Get funding rate OHLC history"""
         try:
             # Use correct parameter names from API documentation
+            # FIXED: Use correct interval format and parameter names
             params = {
                 "symbol": f"{symbol}USDT",  # Format symbol with USDT suffix
-                "interval": interval,
+                "interval": interval,  # Use "8h" for funding rate (standard interval)
                 "exchange": "Binance",
-                "limit": 1000
+                "limit": 100  # Reduced limit to get recent data
             }
             if start_time:
-                params["start_time"] = start_time
+                params["startTime"] = start_time  # FIXED: Correct parameter name
             if end_time:
-                params["end_time"] = end_time
+                params["endTime"] = end_time    # FIXED: Correct parameter name
             result = await self._make_request("/api/futures/funding-rate/history", params)
             if not result.get("success"):
                 logger.error(f"[COINGLASS] Failed endpoint /api/futures/funding-rate/history reason: {result.get('error')}")
