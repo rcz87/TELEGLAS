@@ -366,7 +366,7 @@ class RawDataService:
                 if result and result.get("success"):
                     data = safe_get(result, "data", [])
                     if data and isinstance(data, list) and len(data) > 0:
-                        # Get the most recent EMA value
+                        # Get most recent EMA value
                         latest = data[-1]
                         if isinstance(latest, dict):
                             ema_value = safe_float(safe_get(latest, "ema"))
@@ -385,6 +385,155 @@ class RawDataService:
             logger.error(f"[RAW] Error in get_ema_multi_tf for {symbol}: {e}")
             # Return empty data on error
             return {"5m": 0.0, "15m": 0.0, "1h": 0.0, "4h": 0.0}
+
+    # ORDERBOOK METHODS FOR RAW ORDERBOOK COMMAND
+    
+    async def get_orderbook_snapshot(self, symbol: str) -> Dict[str, Any]:
+        """Get orderbook snapshot data for RAW orderbook command"""
+        try:
+            # Use resolve_orderbook_symbols helper
+            base_symbol, futures_pair = self.api.resolve_orderbook_symbols(symbol)
+            
+            # Get snapshot orderbook history (1H) - FIXED IMPLEMENTATION
+            snapshot_result = await self.api.get_orderbook_history(
+                base_symbol=base_symbol,
+                futures_pair=futures_pair,
+                exchange="Binance",
+                interval="1h",
+                limit=1
+            )
+            
+            if snapshot_result is None:
+                logger.warning(f"[RAW] No snapshot orderbook data for {symbol}")
+                return {
+                    "snapshot_timestamp": None,
+                    "top_bids": [],
+                    "top_asks": [],
+                    "snapshot_error": "No data available"
+                }
+            
+            # Extract snapshot data from FIXED implementation
+            timestamp = snapshot_result.get("timestamp")
+            bids = snapshot_result.get("bids", [])
+            asks = snapshot_result.get("asks", [])
+            
+            # Get top 5 bids and asks
+            top_bids = bids[:5] if bids else []
+            top_asks = asks[:5] if asks else []
+            
+            return {
+                "snapshot_timestamp": timestamp,
+                "top_bids": top_bids,
+                "top_asks": top_asks,
+                "snapshot_error": None
+            }
+            
+        except Exception as e:
+            logger.error(f"[RAW] Error getting orderbook snapshot for {symbol}: {e}")
+            return {
+                "snapshot_timestamp": None,
+                "top_bids": [],
+                "top_asks": [],
+                "snapshot_error": str(e)
+            }
+
+    async def get_orderbook_depth(self, symbol: str) -> Dict[str, Any]:
+        """Get orderbook depth data for RAW orderbook command"""
+        try:
+            # Use resolve_orderbook_symbols helper
+            base_symbol, futures_pair = self.api.resolve_orderbook_symbols(symbol)
+            
+            # Get Binance orderbook depth (1D) - FIXED IMPLEMENTATION
+            depth_result = await self.api.get_orderbook_ask_bids_history(
+                base_symbol=base_symbol,
+                futures_pair=futures_pair,
+                exchange="Binance",
+                interval="1d",
+                limit=100,
+                range_param="1"
+            )
+            
+            if depth_result is None:
+                logger.warning(f"[RAW] No depth orderbook data for {symbol}")
+                return {
+                    "depth_timestamp": None,
+                    "total_bid_volume": 0.0,
+                    "total_ask_volume": 0.0,
+                    "bid_ask_ratio": 0.0,
+                    "depth_error": "No data available"
+                }
+            
+            # Extract depth data from FIXED implementation
+            timestamp = depth_result.get("timestamp")
+            total_bid_volume = depth_result.get("total_bid_volume", 0.0)
+            total_ask_volume = depth_result.get("total_ask_volume", 0.0)
+            bid_ask_ratio = depth_result.get("bid_ask_ratio", 0.0)
+            
+            return {
+                "depth_timestamp": timestamp,
+                "total_bid_volume": total_bid_volume,
+                "total_ask_volume": total_ask_volume,
+                "bid_ask_ratio": bid_ask_ratio,
+                "depth_error": None
+            }
+            
+        except Exception as e:
+            logger.error(f"[RAW] Error getting orderbook depth for {symbol}: {e}")
+            return {
+                "depth_timestamp": None,
+                "total_bid_volume": 0.0,
+                "total_ask_volume": 0.0,
+                "bid_ask_ratio": 0.0,
+                "depth_error": str(e)
+            }
+
+    async def get_orderbook_aggregated(self, symbol: str) -> Dict[str, Any]:
+        """Get aggregated orderbook data for RAW orderbook command"""
+        try:
+            # Use resolve_orderbook_symbols helper
+            base_symbol, futures_pair = self.api.resolve_orderbook_symbols(symbol)
+            
+            # Get aggregated orderbook depth (1H) - FIXED IMPLEMENTATION
+            agg_result = await self.api.get_aggregated_orderbook_ask_bids_history(
+                base_symbol=base_symbol,
+                exchange_list="Binance",
+                interval="h1",
+                limit=500
+            )
+            
+            if agg_result is None:
+                logger.warning(f"[RAW] No aggregated orderbook data for {symbol}")
+                return {
+                    "agg_timestamp": None,
+                    "agg_total_bid_volume": 0.0,
+                    "agg_total_ask_volume": 0.0,
+                    "agg_bid_ask_ratio": 0.0,
+                    "agg_error": "No data available"
+                }
+            
+            # Extract aggregated data from FIXED implementation
+            timestamp = agg_result.get("timestamp")
+            agg_total_bid_volume = agg_result.get("total_bid_volume", 0.0)
+            agg_total_ask_volume = agg_result.get("total_ask_volume", 0.0)
+            agg_bid_ask_ratio = agg_result.get("bid_ask_ratio", 0.0)
+            
+            return {
+                "agg_timestamp": timestamp,
+                "agg_total_bid_volume": agg_total_bid_volume,
+                "agg_total_ask_volume": agg_total_ask_volume,
+                "agg_bid_ask_ratio": agg_bid_ask_ratio,
+                "agg_error": None
+            }
+            
+        except Exception as e:
+            logger.error(f"[RAW] Error getting aggregated orderbook for {symbol}: {e}")
+            return {
+                "agg_timestamp": None,
+                "agg_total_bid_volume": 0.0,
+                "agg_total_ask_volume": 0.0,
+                "agg_bid_ask_ratio": 0.0,
+                "agg_error": str(e)
+            }
     
     # DATA EXTRACTION METHODS
     

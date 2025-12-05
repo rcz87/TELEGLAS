@@ -284,8 +284,19 @@ class CoinGlassAPI:
     async def get_liquidation_exchange_list(self, symbol: str, range_param: str = "24h") -> Dict[str, Any]:
         """Get liquidation data for specific coin across all exchanges"""
         try:
+            # FIXED: Use futures_pair format (BTCUSDT) instead of base symbol (BTC)
+            futures_symbol = normalize_future_symbol(symbol)
+            
+            params = {
+                "symbol": futures_symbol,  # Use futures_pair format
+                "range": range_param
+            }
+            
+            # DEBUG LOGGING: Log the exact request being made
+            logger.debug(f"[COINGLASS REQUEST] /api/futures/liquidation/exchange-list params={params}")
+            
             result = await self._make_request(
-                "/api/futures/liquidation/exchange-list", {"symbol": symbol, "range": range_param}
+                "/api/futures/liquidation/exchange-list", params
             )
             if not result.get("success"):
                 logger.error(f"[COINGLASS] Failed endpoint /api/futures/liquidation/exchange-list reason: {result.get('error')}")
@@ -906,69 +917,6 @@ class CoinGlassAPI:
             logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/aggregation reason: {e}")
             return {"success": False, "data": []}
 
-    async def get_orderbook_history(
-        self,
-        symbol: str,
-        exchange: str = "Binance",
-        interval: str = "1h",
-        limit: int = 100,
-        start_time: Optional[int] = None,
-        end_time: Optional[int] = None,
-    ) -> Dict[str, Any]:
-        """Get orderbook history for better market analysis"""
-        try:
-            # Use correct parameter names from API documentation
-            params = {
-                "symbol": f"{symbol}USDT",  # Format symbol with USDT suffix
-                "exchange": exchange,
-                "interval": interval,
-                "limit": limit
-            }
-            if start_time:
-                params["start_time"] = start_time
-            if end_time:
-                params["end_time"] = end_time
-            result = await self._make_request("/api/futures/orderbook/history", params)
-            if not result.get("success"):
-                logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/history reason: {result.get('error')}")
-                return {"success": False, "data": []}
-            return result
-        except Exception as e:
-            logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/history reason: {e}")
-            return {"success": False, "data": []}
-
-    async def get_orderbook_ask_bids_history(
-        self,
-        symbol: str,
-        exchange: str = "Binance",
-        interval: str = "1h",
-        limit: int = 1000,
-        start_time: Optional[int] = None,
-        end_time: Optional[int] = None,
-        range_param: str = "1"
-    ) -> Dict[str, Any]:
-        """Get orderbook ask-bids history for better taker flow analysis"""
-        try:
-            # Use correct parameter names from API documentation
-            params = {
-                "symbol": f"{symbol}USDT",  # Format symbol with USDT suffix
-                "exchange": exchange,
-                "interval": interval,
-                "limit": limit,
-                "range": range_param
-            }
-            if start_time:
-                params["start_time"] = start_time
-            if end_time:
-                params["end_time"] = end_time
-            result = await self._make_request("/api/futures/orderbook/ask-bids-history", params)
-            if not result.get("success"):
-                logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/ask-bids-history reason: {result.get('error')}")
-                return {"success": False, "data": []}
-            return result
-        except Exception as e:
-            logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/ask-bids-history reason: {e}")
-            return {"success": False, "data": []}
 
     # Bitcoin Indicators - Only allowed endpoints from truth table
 
@@ -1306,7 +1254,7 @@ class CoinGlassAPI:
             return base, s
         return s, s + "USDT"
 
-    # Orderbook Analysis Endpoints for RAW Orderbook Command
+    # Orderbook Analysis Endpoints for RAW Orderbook Command - FIXED IMPLEMENTATION
 
     async def get_orderbook_history(
         self,
@@ -1315,8 +1263,11 @@ class CoinGlassAPI:
         exchange: str = "Binance",
         interval: str = "1h",
         limit: int = 1,
-    ) -> Optional[Any]:
-        """Get orderbook history - endpoint 1"""
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get orderbook history - endpoint 1
+        Returns snapshot data with bids/asks levels
+        """
         try:
             # Use CORRECT params as specified in requirements
             params = {
@@ -1327,16 +1278,39 @@ class CoinGlassAPI:
             }
             
             # DEBUG LOGGING: Log the exact request being made
-            logger.debug(f"[COINGLASS REQUEST] /api/futures/orderbook/history params={params}")
+            logger.debug(f"[COINGLASS ORDERBOOK REQUEST] /api/futures/orderbook/history params={params}")
             
             result = await self._make_request("/api/futures/orderbook/history", params)
-            if result.get("success"):
-                return result.get("data", [])
-            else:
-                logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/history reason: {result.get('error')}")
+            
+            # Enhanced error handling
+            if not result.get("success"):
+                error_msg = result.get('error', 'Unknown error')
+                logger.error(f"[COINGLASS ORDERBOOK ERROR] /api/futures/orderbook/history failed: {error_msg}")
                 return None
+            
+            data = result.get("data", [])
+            if not data or not isinstance(data, list):
+                logger.warning(f"[COINGLASS ORDERBOOK] No data returned for orderbook history")
+                return None
+            
+            # FIXED: Handle the actual data format [timestamp, [bids], [asks]]
+            latest_snapshot = data[-1] if data else None
+            if latest_snapshot and isinstance(latest_snapshot, list) and len(latest_snapshot) >= 3:
+                timestamp = latest_snapshot[0]
+                bids = latest_snapshot[1] if len(latest_snapshot) > 1 else []
+                asks = latest_snapshot[2] if len(latest_snapshot) > 2 else []
+                
+                return {
+                    "timestamp": timestamp,
+                    "bids": bids,
+                    "asks": asks,
+                    "snapshot_data": latest_snapshot
+                }
+            
+            return None
+            
         except Exception as e:
-            logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/history reason: {e}")
+            logger.error(f"[COINGLASS ORDERBOOK ERROR] /api/futures/orderbook/history exception: {e}")
             return None
 
     async def get_orderbook_ask_bids_history(
@@ -1347,8 +1321,11 @@ class CoinGlassAPI:
         interval: str = "1d",
         limit: int = 100,
         range_param: str = "1"
-    ) -> Optional[List]:
-        """Get orderbook ask-bids history - endpoint 2"""
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get orderbook ask-bids history - endpoint 2
+        Returns depth analysis data for bid/ask volume
+        """
         try:
             # Use CORRECT params as specified in requirements
             params = {
@@ -1360,16 +1337,46 @@ class CoinGlassAPI:
             }
             
             # DEBUG LOGGING: Log the exact request being made
-            logger.debug(f"[COINGLASS REQUEST] /api/futures/orderbook/ask-bids-history params={params}")
+            logger.debug(f"[COINGLASS ORDERBOOK REQUEST] /api/futures/orderbook/ask-bids-history params={params}")
             
             result = await self._make_request("/api/futures/orderbook/ask-bids-history", params)
-            if result.get("success"):
-                return result.get("data", [])
-            else:
-                logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/ask-bids-history reason: {result.get('error')}")
+            
+            # Enhanced error handling
+            if not result.get("success"):
+                error_msg = result.get('error', 'Unknown error')
+                logger.error(f"[COINGLASS ORDERBOOK ERROR] /api/futures/orderbook/ask-bids-history failed: {error_msg}")
                 return None
+            
+            data = result.get("data", [])
+            if not data or not isinstance(data, list):
+                logger.warning(f"[COINGLASS ORDERBOOK] No data returned for ask-bids history")
+                return None
+            
+            # Process depth data to calculate bid/ask volumes
+            latest_data = data[-1] if data else None
+            if latest_data and isinstance(latest_data, dict):
+                # Calculate total bid and ask volumes within the range
+                bids_data = latest_data.get("bids", [])
+                asks_data = latest_data.get("asks", [])
+                
+                total_bid_volume = sum(safe_float(bid.get("size", 0)) for bid in bids_data if isinstance(bid, dict))
+                total_ask_volume = sum(safe_float(ask.get("size", 0)) for ask in asks_data if isinstance(ask, dict))
+                bid_ask_ratio = total_bid_volume / max(total_ask_volume, 1.0)
+                
+                return {
+                    "timestamp": latest_data.get("time"),
+                    "total_bid_volume": total_bid_volume,
+                    "total_ask_volume": total_ask_volume,
+                    "bid_ask_ratio": bid_ask_ratio,
+                    "bids": bids_data,
+                    "asks": asks_data,
+                    "depth_data": latest_data
+                }
+            
+            return None
+            
         except Exception as e:
-            logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/ask-bids-history reason: {e}")
+            logger.error(f"[COINGLASS ORDERBOOK ERROR] /api/futures/orderbook/ask-bids-history exception: {e}")
             return None
 
     async def get_aggregated_orderbook_ask_bids_history(
@@ -1378,8 +1385,11 @@ class CoinGlassAPI:
         exchange_list: str = "Binance",
         interval: str = "h1",
         limit: int = 500,
-    ) -> Optional[List]:
-        """Get aggregated orderbook ask-bids history - endpoint 3"""
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get aggregated orderbook ask-bids history - endpoint 3
+        Returns multi-exchange aggregated depth data
+        """
         try:
             # Use CORRECT params as specified in requirements
             params = {
@@ -1390,16 +1400,47 @@ class CoinGlassAPI:
             }
             
             # DEBUG LOGGING: Log the exact request being made
-            logger.debug(f"[COINGLASS REQUEST] /api/futures/orderbook/aggregated-ask-bids-history params={params}")
+            logger.debug(f"[COINGLASS ORDERBOOK REQUEST] /api/futures/orderbook/aggregated-ask-bids-history params={params}")
             
             result = await self._make_request("/api/futures/orderbook/aggregated-ask-bids-history", params)
-            if result.get("success"):
-                return result.get("data", [])
-            else:
-                logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/aggregated-ask-bids-history reason: {result.get('error')}")
+            
+            # Enhanced error handling
+            if not result.get("success"):
+                error_msg = result.get('error', 'Unknown error')
+                logger.error(f"[COINGLASS ORDERBOOK ERROR] /api/futures/orderbook/aggregated-ask-bids-history failed: {error_msg}")
                 return None
+            
+            data = result.get("data", [])
+            if not data or not isinstance(data, list):
+                logger.warning(f"[COINGLASS ORDERBOOK] No data returned for aggregated ask-bids history")
+                return None
+            
+            # Process aggregated data
+            latest_data = data[-1] if data else None
+            if latest_data and isinstance(latest_data, dict):
+                # Calculate aggregated bid/ask volumes across exchanges
+                bids_data = latest_data.get("bids", [])
+                asks_data = latest_data.get("asks", [])
+                
+                total_bid_volume = sum(safe_float(bid.get("size", 0)) for bid in bids_data if isinstance(bid, dict))
+                total_ask_volume = sum(safe_float(ask.get("size", 0)) for ask in asks_data if isinstance(ask, dict))
+                bid_ask_ratio = total_bid_volume / max(total_ask_volume, 1.0)
+                
+                return {
+                    "timestamp": latest_data.get("time"),
+                    "total_bid_volume": total_bid_volume,
+                    "total_ask_volume": total_ask_volume,
+                    "bid_ask_ratio": bid_ask_ratio,
+                    "bids": bids_data,
+                    "asks": asks_data,
+                    "aggregated_data": latest_data,
+                    "exchange_list": exchange_list
+                }
+            
+            return None
+            
         except Exception as e:
-            logger.error(f"[COINGLASS] Failed endpoint /api/futures/orderbook/aggregated-ask-bids-history reason: {e}")
+            logger.error(f"[COINGLASS ORDERBOOK ERROR] /api/futures/orderbook/aggregated-ask-bids-history exception: {e}")
             return None
 
     async def get_orderbook_history_raw(

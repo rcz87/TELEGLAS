@@ -53,7 +53,7 @@ class WhaleWatcher:
         self.running = False
 
     async def start_monitoring(self):
-        """Start the whale monitoring loop"""
+        """Start whale monitoring loop"""
         logger.info("[START] Starting whale monitoring")
         self.running = True
 
@@ -76,7 +76,7 @@ class WhaleWatcher:
                 except Exception as e:
                     error_type = type(e).__name__
                     logger.error(f"[LOOP_ERROR] {error_type} in whale monitoring loop: {str(e)}")
-                    # Continue the loop - don't let one error stop the monitoring
+                    # Continue to loop - don't let one error stop the monitoring
                     await asyncio.sleep(30)  # Wait 30 seconds on error
 
         finally:
@@ -86,7 +86,7 @@ class WhaleWatcher:
             logger.info("[STOP] Whale monitoring stopped")
 
     async def stop_monitoring(self):
-        """Stop the whale monitoring loop gracefully"""
+        """Stop whale monitoring loop gracefully"""
         logger.info("[STOP] Stopping whale monitoring...")
         self.running = False
 
@@ -117,7 +117,7 @@ class WhaleWatcher:
         except Exception as e:
             error_type = type(e).__name__
             logger.error(f"[WHALE_WATCHER_ERROR] {error_type} in whale transaction check: {str(e)}")
-            # Don't re-raise - let the monitoring loop continue
+            # Don't re-raise - let's monitoring loop continue
             return
 
     async def _process_whale_data(self, data: List[Dict[str, Any]]):
@@ -136,14 +136,28 @@ class WhaleWatcher:
                     logger.debug(f"Skipping non-dict whale item at index {i}")
                     continue
 
-                # Extract transaction data safely
-                transaction_hash = str(safe_get(item, "hash", "")).strip()
+                # FIXED: Extract transaction data with correct API field mapping
+                # API response fields: user, symbol, position_action, position_value_usd, entry_price, position_size, create_time
+                transaction_hash = str(safe_get(item, "user", "")).strip()  # API uses "user" not "hash"
                 symbol = str(safe_get(item, "symbol", "")).upper().strip()
-                side = str(safe_get(item, "side", "")).lower().strip()
-                amount_usd = safe_float(safe_get(item, "amountUSD"), 0.0)
-                price = safe_float(safe_get(item, "price"), 0.0)
-                quantity = safe_float(safe_get(item, "quantity"), 0.0)
-                timestamp_str = str(safe_get(item, "timestamp", "")).strip()
+                
+                # FIXED: Map position_action to side (2=sell, 1=buy based on typical API conventions)
+                position_action = safe_int(safe_get(item, "position_action", 0))
+                if position_action == 2:
+                    side = "sell"
+                elif position_action == 1:
+                    side = "buy"
+                else:
+                    side = "unknown"
+                
+                # FIXED: Use position_value_usd instead of amountUSD
+                amount_usd = safe_float(safe_get(item, "position_value_usd"), 0.0)
+                price = safe_float(safe_get(item, "entry_price"), 0.0)
+                quantity = safe_float(safe_get(item, "position_size"), 0.0)
+                
+                # FIXED: Use create_time instead of timestamp
+                create_time = safe_int(safe_get(item, "create_time", 0))
+                timestamp_str = str(create_time) if create_time > 0 else ""
 
                 # Validate required fields
                 if not all([transaction_hash, symbol, side]):
@@ -408,7 +422,7 @@ class WhaleWatcher:
             return f"Whale Signal for {signal.symbol}"
 
     async def _notify_subscribers(self, signal: WhaleSignal):
-        """Notify users subscribed to the symbol"""
+        """Notify users subscribed to symbol"""
         try:
             subscribers = await db_manager.get_subscribers_for_symbol(
                 signal.symbol, "whale"

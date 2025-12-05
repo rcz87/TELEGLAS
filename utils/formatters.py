@@ -56,7 +56,16 @@ def build_raw_orderbook_text(
         timestamp = "N/A"
         if history_data and len(history_data) > 0:
             latest_data = history_data[0] if isinstance(history_data, list) else history_data
-            if isinstance(latest_data, dict):
+            
+            # Handle actual API response structure: [timestamp, [bids], [asks]]
+            if isinstance(latest_data, list) and len(latest_data) >= 1:
+                ts_unix = safe_int(latest_data[0])  # Unix timestamp (not milliseconds)
+                if ts_unix > 0:
+                    dt = datetime.fromtimestamp(ts_unix)
+                    timestamp = dt.strftime('%Y-%m-%d %H:%M UTC')
+            
+            # Fallback to dict-based structure
+            elif isinstance(latest_data, dict):
                 ts_ms = safe_int(latest_data.get("createTime"))
                 if ts_ms > 0:
                     dt = datetime.fromtimestamp(ts_ms / 1000)
@@ -71,7 +80,33 @@ def build_raw_orderbook_text(
         
         if history_data and len(history_data) > 0:
             latest_data = history_data[0] if isinstance(history_data, list) else history_data
-            if isinstance(latest_data, dict):
+            
+            # Handle the actual API response structure: [timestamp, [bids], [asks]]
+            if isinstance(latest_data, list) and len(latest_data) >= 3:
+                timestamp = latest_data[0]  # Unix timestamp
+                bids_data = latest_data[1] if len(latest_data) > 1 else []
+                asks_data = latest_data[2] if len(latest_data) > 2 else []
+                
+                # Extract bid data from array format: [[price, qty], [price, qty], ...]
+                if isinstance(bids_data, list) and bids_data:
+                    for i, bid in enumerate(bids_data[:5]):  # Top 5 bids
+                        if isinstance(bid, list) and len(bid) >= 2:
+                            price = safe_float(bid[0])
+                            qty = safe_float(bid[1])
+                            if price > 0 and qty > 0:
+                                top_bids.append(f"• {price:,.0f}   | {qty:.3f} BTC")
+                
+                # Extract ask data from array format: [[price, qty], [price, qty], ...]
+                if isinstance(asks_data, list) and asks_data:
+                    for i, ask in enumerate(asks_data[:5]):  # Top 5 asks
+                        if isinstance(ask, list) and len(ask) >= 2:
+                            price = safe_float(ask[0])
+                            qty = safe_float(ask[1])
+                            if price > 0 and qty > 0:
+                                top_asks.append(f"• {price:,.0f}   | {qty:.3f} BTC")
+            
+            # Fallback to original dict-based structure (for compatibility)
+            elif isinstance(latest_data, dict):
                 # Extract bid data
                 bid_list = safe_get(latest_data, "bidList", [])
                 if isinstance(bid_list, list) and bid_list:

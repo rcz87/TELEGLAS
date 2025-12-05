@@ -919,9 +919,9 @@ class TelegramBot:
             
             # RSI data - Use new 1h/4h/1d format
             rsi_1h_4h_1d = safe_get(data, 'rsi_1h_4h_1d', {})
-            rsi_1h_new = safe_get(rsi_1h_4h_1d, 'rsi_1h')
-            rsi_4h_new = safe_get(rsi_1h_4h_1d, 'rsi_4h')
-            rsi_1d_new = safe_get(rsi_1h_4h_1d, 'rsi_1d')
+            rsi_1h_new = safe_get(rsi_1h_4h_1d, '1h')
+            rsi_4h_new = safe_get(rsi_1h_4h_1d, '4h')
+            rsi_1d_new = safe_get(rsi_1h_4h_1d, '1d')
             
             # CG Levels data
             cg_levels = safe_get(data, 'cg_levels', {})
