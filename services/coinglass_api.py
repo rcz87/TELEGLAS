@@ -402,21 +402,25 @@ class CoinGlassAPI:
 
     async def get_global_long_short_ratio(self, symbol: str, ex_name: str = "Binance") -> Optional[Dict[str, Any]]:
         """
-        Get global long/short account ratio history
+        Get global long/short account ratio history using authenticated v4 endpoint
         
         Args:
-            symbol: futures_pair (e.g., BTCUSDT, ETHUSDT, SOLUSDT)
+            symbol: base symbol (e.g., "BTC", "ETH") - will be normalized to futures_pair
             ex_name: exchange name (default: "Binance")
             
         Returns:
-            Dict with long_percent, short_percent, ratio_global or None
+            Dict with long_percent, short_percent, long_short_ratio, timestamp or None
         """
         try:
+            # Normalize symbol to futures_pair format
+            futures_symbol = normalize_future_symbol(symbol)
+            
             # Use EXACT params as specified in requirements
             params = {
                 "exchange": ex_name,
-                "symbol": symbol,  # Use futures_pair (BTCUSDT)
-                "interval": "h1"  # IMPORTANT: Must be "h1", not "1h"
+                "symbol": futures_symbol,  # Use futures_pair (BTCUSDT)
+                "interval": "h1",  # IMPORTANT: Must be "h1", not "1h"
+                "limit": 100  # Add limit parameter
             }
             
             # DEBUG LOGGING: Log the exact request being made
@@ -427,21 +431,32 @@ class CoinGlassAPI:
                 params
             )
             
-            if result.get("code") == "0":
+            # Check if request was successful
+            if result.get("success") and result.get("code") == "0":
                 data = result.get("data") or []
-                valid = [x for x in data if x.get("global_account_long_percent") is not None]
-                if valid:
-                    latest = valid[-1]
-                    return {
-                        "long_percent": latest.get("global_account_long_percent"),
-                        "short_percent": latest.get("global_account_short_percent"),
-                        "ratio_global": latest.get("global_account_long_short_ratio"),
-                    }
-                else:
-                    logger.warning(f"[COINGLASS] No valid global long/short data for {symbol}")
+                if not data:
+                    logger.warning(f"[COINGLASS] No data returned for global long/short ratio for {futures_symbol}")
                     return None
+                
+                # Find the most recent valid entry (by timestamp)
+                valid_entries = [x for x in data if x.get("global_account_long_percent") is not None and x.get("time") is not None]
+                if not valid_entries:
+                    logger.warning(f"[COINGLASS] No valid global long/short data for {futures_symbol}")
+                    return None
+                
+                # Sort by timestamp to get the most recent
+                valid_entries.sort(key=lambda x: x.get("time", 0))
+                latest = valid_entries[-1]
+                
+                return {
+                    "long_percent": latest.get("global_account_long_percent"),
+                    "short_percent": latest.get("global_account_short_percent"),
+                    "long_short_ratio": latest.get("global_account_long_short_ratio"),
+                    "timestamp": latest.get("time")
+                }
             else:
-                logger.warning(f"[COINGLASS] Global long/short API error for {symbol}: {result.get('msg', 'Unknown error')}")
+                error_msg = result.get('msg', result.get('error', 'Unknown error'))
+                logger.warning(f"[COINGLASS] Global long/short API error for {futures_symbol}: {error_msg}")
                 return None
                 
         except Exception as e:
@@ -1764,22 +1779,13 @@ class CoinGlassAPI:
             return {}
 
     async def _get_long_short_ratio_summary(self, symbol: str) -> Dict[str, Any]:
-        """Get long/short ratio summary from Binance"""
+        """Get long/short ratio summary from Binance using updated get_global_long_short_ratio"""
         try:
+            # get_global_long_short_ratio now returns a dict directly or None
             result = await self.get_global_long_short_ratio(symbol, "Binance")
             
-            if not result.get("success"):
-                logger.warning(f"[RAW_DATA] Failed to get L/S ratio for {symbol}: {result.get('error')}")
-                return {
-                    "account_ratio": None,
-                    "position_ratio": None,
-                    "exchange": "binance",
-                    "error": result.get('error')
-                }
-            
-            data = result.get("data", [])
-            if not isinstance(data, list) or not data:
-                logger.warning(f"[RAW_DATA] Empty L/S ratio data for {symbol}")
+            if result is None:
+                logger.warning(f"[RAW_DATA] Failed to get L/S ratio for {symbol}: No data returned")
                 return {
                     "account_ratio": None,
                     "position_ratio": None,
@@ -1787,30 +1793,23 @@ class CoinGlassAPI:
                     "error": "No data available"
                 }
             
-            # Get most recent data
-            latest = data[-1] if data else None
-            if not isinstance(latest, dict):
-                logger.warning(f"[RAW_DATA] Invalid L/S ratio data format for {symbol}")
-                return {
-                    "account_ratio": None,
-                    "position_ratio": None,
-                    "exchange": "binance",
-                    "error": "Invalid data format"
-                }
+            # Extract data from the new format
+            long_percent = result.get("long_percent")
+            short_percent = result.get("short_percent")
+            long_short_ratio = result.get("long_short_ratio")
             
-            account_ratio = safe_float(latest.get("longShortRatio"))
-            position_ratio = safe_float(latest.get("positionLongShortRatio"))
-            
-            # If values are 0.0 (default from safe_float), treat as missing data
-            if account_ratio == 0.0:
-                account_ratio = None
-            if position_ratio == 0.0:
-                position_ratio = None
+            # Convert to account_ratio format (long/short ratio)
+            account_ratio = long_short_ratio
+            position_ratio = None  # Not available in this endpoint
             
             return {
                 "account_ratio": account_ratio,
                 "position_ratio": position_ratio,
                 "exchange": "binance",
+                "long_percent": long_percent,
+                "short_percent": short_percent,
+                "long_short_ratio": long_short_ratio,
+                "timestamp": result.get("timestamp")
             }
             
         except Exception as e:
