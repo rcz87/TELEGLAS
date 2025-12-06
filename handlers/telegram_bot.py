@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime
 from functools import wraps
 from loguru import logger
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.helpers import escape_markdown
 from telegram.ext import (
     Application,
@@ -22,6 +22,16 @@ from services.funding_rate_radar import funding_rate_radar
 from services.coinglass_api import coinglass_api
 from utils.auth import is_user_allowed, log_access_attempt, get_access_status_message
 from utils.formatters import build_raw_orderbook_text
+
+
+def get_main_menu_keyboard() -> ReplyKeyboardMarkup:
+    """Create main menu keyboard with command buttons"""
+    keyboard = [
+        [KeyboardButton("/raw"), KeyboardButton("/whale")],
+        [KeyboardButton("/liq"), KeyboardButton("/sentiment")],
+        [KeyboardButton("/status"), KeyboardButton("/alerts")],
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
 def require_access(func):
@@ -207,26 +217,29 @@ class TelegramBot:
             user = update.callback_query.from_user
         username = user.username or user.first_name
 
+        keyboard = get_main_menu_keyboard()
+
         welcome_message = (
-            f"🛸 *Welcome to CryptoSat Bot, {self.sanitize(username)}!*\n\n"
-            "🎯 *High-Frequency Trading Signals & Market Intelligence*\n\n"
-            "📊 *Available Commands:*\n"
-            "/liq `[SYMBOL]` - Get liquidation data\n"
-            "/raw `[SYMBOL]` - Comprehensive market data\n"
+            f"🛸 Welcome to CryptoSat Bot, {username}!\n\n"
+            "🎯 High-Frequency Trading Signals & Market Intelligence\n\n"
+            "📊 Available Commands:\n"
+            "/liq [SYMBOL] - Get liquidation data\n"
+            "/raw [SYMBOL] - Comprehensive market data\n"
             "/sentiment - Market sentiment analysis\n"
             "/whale - Recent whale transactions\n"
-            "/subscribe `[SYMBOL]` - Subscribe to alerts\n"
-            "/unsubscribe `[SYMBOL]` - Unsubscribe from alerts\n"
+            "/subscribe [SYMBOL] - Subscribe to alerts\n"
+            "/unsubscribe [SYMBOL] - Unsubscribe from alerts\n"
             "/status - Bot status and performance\n"
             "/alerts - View your alert subscriptions\n\n"
-            "🚨 *Real-time Monitoring Active:*\n"
+            "🚨 Real-time Monitoring Active:\n"
             "• Massive Liquidations (>$1M)\n"
             f"• Whale Movements (>${settings.WHALE_TRANSACTION_THRESHOLD_USD:,.0f})\n"
             "• Extreme Funding Rates\n\n"
-            "⚡ Powered by CoinGlass API v4"
+            "⚡ Powered by CoinGlass API v4\n\n"
+            "👇 Gunakan tombol di bawah untuk akses cepat."
         )
 
-        await update.message.reply_text(welcome_message, parse_mode="Markdown")
+        await update.message.reply_text(welcome_message, reply_markup=keyboard)
 
     @require_access
     async def handle_help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1344,15 +1357,43 @@ Top 5 Asks: {', '.join([f'${ask:.2f}' if isinstance(ask, (int, float)) else str(
                 )
 
     @require_access
-    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle non-command messages"""
-        # Simple message handling - provide help
+    async def handle_text_buttons(self, update: Update, context):
+        """Handle button clicks from main menu keyboard"""
+        txt = update.message.text
+
+        if txt == "/raw":
+            await update.message.reply_text("Masukkan symbol, contoh: /raw SOL")
+            return
+
+        if txt == "/liq":
+            await update.message.reply_text("Masukkan symbol, contoh: /liq BTC")
+            return
+
+        if txt == "/whale":
+            return await self.handle_whale(update, context)
+
+        if txt == "/sentiment":
+            return await self.handle_sentiment(update, context)
+
+        if txt == "/status":
+            return await self.handle_status(update, context)
+
+        if txt == "/alerts":
+            return await self.handle_alerts(update, context)
+
+        # Fallback for other text messages
         await update.message.reply_text(
             self.sanitize("👋 *Hello!*\n\n"
-            "Use /help to see available commands.\n"
-            "I'm here to provide real-time crypto trading signals!"),
+            "Gunakan tombol menu di bawah atau ketik /help untuk melihat semua perintah.\n"
+            "Saya di sini untuk memberikan sinyal trading real-time!"),
             parse_mode="Markdown",
         )
+
+    @require_access
+    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle non-command messages"""
+        # Handle button clicks from main menu
+        return await self.handle_text_buttons(update, context)
 
     async def broadcast_alert(self, message: str):
         """Broadcast alert to alert channel"""
