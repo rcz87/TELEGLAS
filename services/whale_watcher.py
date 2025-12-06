@@ -448,35 +448,258 @@ class WhaleWatcher:
     async def get_recent_whale_activity(
         self, symbol: str = None, limit: int = 5
     ) -> List[Dict[str, Any]]:
-        """Get recent whale activity for a symbol or all symbols"""
+        """Get recent whale activity for a symbol or all symbols with API fallback"""
         try:
-            if symbol and symbol in self.whale_history:
-                transactions = self.whale_history[symbol]
-            else:
-                # Get transactions from all symbols
-                all_transactions = []
-                for symbol_txs in self.whale_history.values():
-                    all_transactions.extend(symbol_txs)
-                transactions = all_transactions
+            # Try to get from memory first
+            if self.whale_history:
+                if symbol and symbol in self.whale_history:
+                    transactions = self.whale_history[symbol]
+                else:
+                    # Get transactions from all symbols
+                    all_transactions = []
+                    for symbol_txs in self.whale_history.values():
+                        all_transactions.extend(symbol_txs)
+                    transactions = all_transactions
 
-            # Sort by timestamp (most recent first) and limit
-            transactions.sort(key=lambda x: x.timestamp, reverse=True)
-            recent_transactions = transactions[:limit]
+                if transactions:
+                    # Sort by timestamp (most recent first) and limit
+                    transactions.sort(key=lambda x: x.timestamp, reverse=True)
+                    recent_transactions = transactions[:limit]
 
-            return [
-                {
-                    "symbol": tx.symbol,
-                    "side": tx.side,
-                    "amount_usd": tx.amount_usd,
-                    "price": tx.price,
-                    "timestamp": tx.timestamp.isoformat(),
-                    "transaction_hash": tx.transaction_hash,
-                }
-                for tx in recent_transactions
-            ]
+                    return [
+                        {
+                            "symbol": tx.symbol,
+                            "side": tx.side,
+                            "amount_usd": tx.amount_usd,
+                            "price": tx.price,
+                            "timestamp": tx.timestamp.isoformat(),
+                            "transaction_hash": tx.transaction_hash,
+                        }
+                        for tx in recent_transactions
+                    ]
+
+            # Fallback: Get fresh data from API
+            logger.info(f"[WHALE_FALLBACK] No memory data, fetching fresh whale data from API")
+            return await self._get_fresh_whale_activity(symbol, limit)
 
         except Exception as e:
             logger.error(f"Error getting recent whale activity: {e}")
+            return []
+
+    async def _get_fresh_whale_activity(
+        self, symbol: str = None, limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """Get fresh whale activity directly from API"""
+        try:
+            # Get whale alerts from Hyperliquid
+            whale_data = await self.api.get_whale_alert_hyperliquid()
+
+            if not whale_data.get("success", False):
+                logger.warning(f"[WHALE_API] Failed to get fresh whale data: {whale_data.get('error', 'Unknown error')}")
+                return []
+
+            # Handle different response formats
+            data = whale_data.get("data", [])
+            if isinstance(data, dict):
+                data = [data]
+            elif not isinstance(data, list):
+                return []
+
+            current_time = datetime.utcnow()
+            transactions = []
+
+            for item in data:
+                try:
+                    if not isinstance(item, dict):
+                        continue
+
+                    # Extract transaction data with correct API field mapping
+                    transaction_hash = str(safe_get(item, "user", "")).strip()
+                    item_symbol = str(safe_get(item, "symbol", "")).upper().strip()
+                    
+                    # Map position_action to side
+                    position_action = safe_int(safe_get(item, "position_action", 0))
+                    if position_action == 2:
+                        side = "sell"
+                    elif position_action == 1:
+                        side = "buy"
+                    else:
+                        continue  # Skip unknown sides
+                    
+                    # Use position_value_usd
+                    amount_usd = safe_float(safe_get(item, "position_value_usd"), 0.0)
+                    price = safe_float(safe_get(item, "entry_price"), 0.0)
+                    
+                    # Parse timestamp
+                    create_time = safe_int(safe_get(item, "create_time", 0))
+                    timestamp = self._parse_timestamp(str(create_time)) if create_time > 0 else current_time
+
+                    # Filter by symbol if specified
+                    if symbol and item_symbol != symbol.upper():
+                        continue
+
+                    # Only include transactions above threshold
+                    if amount_usd < 100000:  # Lower threshold for sample trades
+                        continue
+
+                    transactions.append({
+                        "symbol": item_symbol,
+                        "side": side,
+                        "amount_usd": amount_usd,
+                        "price": price,
+                        "timestamp": timestamp.isoformat(),
+                        "transaction_hash": transaction_hash,
+                    })
+
+                except Exception as e:
+                    logger.warning(f"Error processing whale item: {e}")
+                    continue
+
+            # Sort by timestamp (most recent first) and limit
+            transactions.sort(key=lambda x: x["timestamp"], reverse=True)
+            return transactions[:limit]
+
+        except Exception as e:
+            logger.error(f"Error getting fresh whale activity: {e}")
+            return []
+
+    async def get_whale_radar_data(self, min_threshold: float = 500000) -> Dict[str, Any]:
+        """Get whale radar data with multi-coin analysis"""
+        try:
+            # Get fresh whale data from API
+            whale_data = await self._get_fresh_whale_activity(symbol=None, limit=100)
+            
+            if not whale_data:
+                logger.warning("[WHALE_RADAR] No whale data available")
+                return {"symbols_above_threshold": [], "symbols_below_threshold": []}
+
+            # Group by symbol and calculate statistics
+            symbol_stats = {}
+            total_alerts = len(whale_data)
+            
+            for tx in whale_data:
+                symbol = tx["symbol"]
+                if symbol not in symbol_stats:
+                    symbol_stats[symbol] = {
+                        "buy_count": 0,
+                        "sell_count": 0,
+                        "buy_usd": 0.0,
+                        "sell_usd": 0.0,
+                        "total_usd": 0.0,
+                        "net_usd": 0.0,
+                        "transactions": []
+                    }
+
+                # Update statistics
+                amount_usd = tx["amount_usd"]
+                if tx["side"] == "buy":
+                    symbol_stats[symbol]["buy_count"] += 1
+                    symbol_stats[symbol]["buy_usd"] += amount_usd
+                else:
+                    symbol_stats[symbol]["sell_count"] += 1
+                    symbol_stats[symbol]["sell_usd"] += amount_usd
+
+                symbol_stats[symbol]["total_usd"] += amount_usd
+                symbol_stats[symbol]["net_usd"] = symbol_stats[symbol]["buy_usd"] - symbol_stats[symbol]["sell_usd"]
+                symbol_stats[symbol]["transactions"].append(tx)
+
+            # Separate symbols above and below threshold
+            symbols_above_threshold = []
+            symbols_below_threshold = []
+
+            for symbol, stats in symbol_stats.items():
+                total_usd = stats["total_usd"]
+                net_usd = stats["net_usd"]
+                
+                # Determine if significant based on total activity
+                is_above_threshold = total_usd >= min_threshold
+                
+                radar_item = {
+                    "symbol": symbol,
+                    "buy_count": stats["buy_count"],
+                    "sell_count": stats["sell_count"],
+                    "buy_usd": stats["buy_usd"],
+                    "sell_usd": stats["sell_usd"],
+                    "total_usd": total_usd,
+                    "net_usd": net_usd,
+                    "dominant_side": "BUY" if net_usd > 0 else "SELL",
+                }
+
+                if is_above_threshold:
+                    symbols_above_threshold.append(radar_item)
+                else:
+                    symbols_below_threshold.append(radar_item)
+
+            # Sort by total USD (descending)
+            symbols_above_threshold.sort(key=lambda x: x["total_usd"], reverse=True)
+            symbols_below_threshold.sort(key=lambda x: x["total_usd"], reverse=True)
+
+            logger.info(
+                f"[WHALE_RADAR] Processed {total_alerts} alerts, "
+                f"{len(symbols_above_threshold)} symbols above threshold, "
+                f"{len(symbols_below_threshold)} symbols below threshold"
+            )
+
+            return {
+                "symbols_above_threshold": symbols_above_threshold,
+                "symbols_below_threshold": symbols_below_threshold,
+                "total_alerts": total_alerts,
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting whale radar data: {e}")
+            return {"symbols_above_threshold": [], "symbols_below_threshold": []}
+
+    async def get_whale_positions(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get current whale positions from Hyperliquid"""
+        try:
+            # Get whale position data
+            position_data = await self.api.get_whale_position_hyperliquid()
+
+            if not position_data.get("success", False):
+                logger.warning(f"[WHALE_POSITION] Failed to get position data: {position_data.get('error', 'Unknown error')}")
+                return []
+
+            # Handle different response formats
+            data = position_data.get("data", [])
+            if isinstance(data, dict):
+                data = [data]
+            elif not isinstance(data, list):
+                return []
+
+            positions = []
+            for item in data:
+                try:
+                    if not isinstance(item, dict):
+                        continue
+
+                    symbol = str(safe_get(item, "symbol", "")).upper().strip()
+                    if not symbol:
+                        continue
+
+                    # Extract position data
+                    notional_usd = safe_float(safe_get(item, "notional_usd"), 0.0)
+                    leverage = safe_float(safe_get(item, "leverage"), 0.0)
+                    side = str(safe_get(item, "side", "")).lower()
+
+                    if notional_usd > 0:
+                        positions.append({
+                            "symbol": symbol,
+                            "position_value_usd": notional_usd,
+                            "leverage": leverage,
+                            "side": side,
+                        })
+
+                except Exception as e:
+                    logger.warning(f"Error processing position item: {e}")
+                    continue
+
+            # Sort by position value (descending) and limit
+            positions.sort(key=lambda x: x["position_value_usd"], reverse=True)
+            return positions[:limit]
+
+        except Exception as e:
+            logger.error(f"Error getting whale positions: {e}")
             return []
 
 

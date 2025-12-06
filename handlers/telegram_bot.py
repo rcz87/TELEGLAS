@@ -373,7 +373,7 @@ class TelegramBot:
 
     @require_access
     async def handle_whale(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /whale command - Whale Radar Multi-Coin Scanner"""
+        """Handle /whale command - Enhanced Whale Radar Multi-Coin Scanner"""
         
         # Get user from update
         user = None
@@ -407,108 +407,63 @@ class TelegramBot:
         await update.message.chat.send_action(action="typing")
         
         try:
-            # Get whale data from all 3 endpoints
-            async with coinglass_api:
-                whale_alert_data = await coinglass_api.get_whale_alert()
-                whale_positions_data = await coinglass_api.get_whale_positions()
-                btc_detail_data = await coinglass_api.get_whale_position_by_symbol("BTC")
-            
-            # Process whale alert data for multi-coin analysis
-            symbol_analysis = {}
-            recent_trades = []
-            
-            if whale_alert_data.get("success") and whale_alert_data.get("data"):
-                alerts = whale_alert_data["data"]
-                
-                # Group by symbol and calculate metrics
-                for alert in alerts:
-                    symbol = alert.get("symbol", "")
-                    side = alert.get("side", "").lower()
-                    amount_usd = alert.get("amountUsd", 0)
-                    timestamp = alert.get("time", 0)
-                    price = alert.get("price", 0)
-                    
-                    # Filter by minimum threshold
-                    if amount_usd >= min_usd:
-                        # Initialize symbol data if not exists
-                        if symbol not in symbol_analysis:
-                            symbol_analysis[symbol] = {
-                                "buy_count": 0,
-                                "sell_count": 0,
-                                "buy_usd": 0.0,
-                                "sell_usd": 0.0,
-                                "net_usd": 0.0
-                            }
-                        
-                        # Update symbol metrics
-                        if side == "buy":
-                            symbol_analysis[symbol]["buy_count"] += 1
-                            symbol_analysis[symbol]["buy_usd"] += amount_usd
-                        else:
-                            symbol_analysis[symbol]["sell_count"] += 1
-                            symbol_analysis[symbol]["sell_usd"] += amount_usd
-                        
-                        # Add to recent trades for sampling
-                        recent_trades.append({
-                            "symbol": symbol,
-                            "side": side,
-                            "amount_usd": amount_usd,
-                            "timestamp": timestamp,
-                            "price": price
-                        })
-                
-                # Calculate net flow for each symbol
-                for symbol, data in symbol_analysis.items():
-                    data["net_usd"] = data["buy_usd"] - data["sell_usd"]
-            
-            # Sort symbols by net activity (absolute net USD)
-            sorted_symbols = sorted(
-                symbol_analysis.items(),
-                key=lambda x: abs(x[1]["net_usd"]),
-                reverse=True
-            )
+            # Use enhanced whale watcher methods
+            radar_data = await whale_watcher.get_whale_radar_data(min_usd)
+            sample_trades = await whale_watcher.get_recent_whale_activity(limit=8)
+            top_positions = await whale_watcher.get_whale_positions(limit=10)
             
             # Build message sections
             message_parts = []
             
-            # Section 1: Whale Radar Symbol
+            # Section 1: Whale Radar
             message_parts.append("🐋 Whale Radar – Hyperliquid (Multi Coin)")
             message_parts.append("")
             
-            if sorted_symbols:
-                for i, (symbol, data) in enumerate(sorted_symbols[:10], 1):  # Top 10 symbols
-                    net_usd = data["net_usd"]
+            symbols_above = radar_data.get("symbols_above_threshold", [])
+            symbols_below = radar_data.get("symbols_below_threshold", [])
+            
+            if symbols_above:
+                for i, symbol_data in enumerate(symbols_above[:10], 1):  # Top 10 symbols
+                    symbol = symbol_data["symbol"]
+                    buy_count = symbol_data["buy_count"]
+                    sell_count = symbol_data["sell_count"]
+                    buy_usd = symbol_data["buy_usd"]
+                    sell_usd = symbol_data["sell_usd"]
+                    net_usd = symbol_data["net_usd"]
+                    dominant_side = symbol_data["dominant_side"]
                     
-                    # Determine flow icon and text
-                    if net_usd > 0:
-                        flow_emoji = "🟢"
-                        flow_text = "BUY DOMINANT"
-                    elif net_usd < 0:
-                        flow_emoji = "🔴"
-                        flow_text = "SELL DOMINANT"
-                    else:
-                        flow_emoji = "⚖️"
-                        flow_text = "BALANCED"
+                    # Determine flow icon
+                    flow_emoji = "🟢" if net_usd > 0 else "🔴"
                     
                     message_parts.append(f"{i}️⃣ {symbol}")
-                    message_parts.append(f"   • Whale Flow : {flow_emoji} {flow_text}")
-                    message_parts.append(f"   • Buy        : {data['buy_count']} tx (${data['buy_usd']/1_000_000:.2f}M)")
-                    message_parts.append(f"   • Sell       : {data['sell_count']} tx (${data['sell_usd']/1_000_000:.2f}M)")
+                    message_parts.append(f"   • Whale Flow : {flow_emoji} {dominant_side} DOMINANT")
+                    message_parts.append(f"   • Buy        : {buy_count} tx (${buy_usd/1_000_000:.2f}M)")
+                    message_parts.append(f"   • Sell       : {sell_count} tx (${sell_usd/1_000_000:.2f}M)")
                     message_parts.append(f"   • Net Flow   : ${net_usd:+,.0f}")
                     message_parts.append("")
             else:
-                message_parts.append("No significant whale activity detected above threshold.")
-                message_parts.append("")
+                # Show symbols below threshold if none above
+                if symbols_below:
+                    message_parts.append("No symbols above threshold, showing top activity below threshold:")
+                    for i, symbol_data in enumerate(symbols_below[:5], 1):  # Top 5 below threshold
+                        symbol = symbol_data["symbol"]
+                        total_usd = symbol_data["total_usd"]
+                        net_usd = symbol_data["net_usd"]
+                        dominant_side = symbol_data["dominant_side"]
+                        
+                        flow_emoji = "🟢" if net_usd > 0 else "🔴"
+                        message_parts.append(f"{i}. {symbol}: {flow_emoji} ${total_usd:,.0f} ({dominant_side})")
+                    message_parts.append("")
+                else:
+                    message_parts.append("No significant whale activity detected above threshold.")
+                    message_parts.append("")
             
-            # Section 2: Sample Recent Trades
+            # Section 2: Sample Recent Whale Trades
             message_parts.append("📌 Sample Recent Whale Trades")
             message_parts.append("")
             
-            # Sort recent trades by timestamp (most recent first)
-            recent_trades_sorted = sorted(recent_trades, key=lambda x: x.get("timestamp", 0), reverse=True)
-            
-            if recent_trades_sorted:
-                for i, trade in enumerate(recent_trades_sorted[:8], 1):  # Max 8 trades
+            if sample_trades:
+                for i, trade in enumerate(sample_trades[:8], 1):  # Max 8 trades
                     symbol = trade["symbol"]
                     side = trade["side"]
                     amount_usd = trade["amount_usd"]
@@ -521,7 +476,8 @@ class TelegramBot:
                     
                     # Format timestamp
                     try:
-                        dt = datetime.fromtimestamp(timestamp / 1000) if timestamp > 1e10 else datetime.fromtimestamp(timestamp)
+                        from datetime import datetime
+                        dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
                         time_str = dt.strftime("%H:%M:%S")
                     except:
                         time_str = "Unknown"
@@ -534,50 +490,33 @@ class TelegramBot:
                 message_parts.append("No recent whale trades available.")
                 message_parts.append("")
             
-            # Section 3: Top Whale Positions (optional)
+            # Section 3: Top Whale Positions
             message_parts.append("📊 Top Whale Positions (Hyperliquid)")
             message_parts.append("")
             
-            position_available = False
-            if whale_positions_data.get("success") and whale_positions_data.get("data"):
-                # Group positions by symbol for top positions
-                symbol_totals = {}
-                for pos in whale_positions_data["data"][:20]:  # Top 20 positions
-                    symbol = pos.get("symbol", "")
-                    if symbol:
-                        value_usd = abs(pos.get("position_value_usd", 0))
-                        if symbol not in symbol_totals:
-                            symbol_totals[symbol] = 0
-                        symbol_totals[symbol] += value_usd
-                
-                if symbol_totals:
-                    position_available = True
-                    # Sort by total value
-                    sorted_positions = sorted(symbol_totals.items(), key=lambda x: x[1], reverse=True)
+            if top_positions:
+                for i, position in enumerate(top_positions[:5], 1):  # Top 5 positions
+                    symbol = position["symbol"]
+                    position_value = position["position_value_usd"]
+                    side = position["side"].title() if position["side"] else "Unknown"
                     
-                    for i, (symbol, total_value) in enumerate(sorted_positions[:5], 1):  # Top 5
-                        # Determine dominant side (simplified)
-                        dominant_side = "Long" if total_value > 0 else "Short"
-                        message_parts.append(f"• {symbol} : ${total_value/1_000_000:.1f}M ({dominant_side})")
-            
-            # Add BTC specific data if available
-            if btc_detail_data.get("success") and btc_detail_data.get("data"):
-                btc_data = btc_detail_data["data"][:1]  # Get top BTC position
-                if btc_data:
-                    btc_pos = btc_data[0]
-                    btc_symbol = btc_pos.get("symbol", "BTC")
-                    btc_value = abs(btc_pos.get("position_value_usd", 0))
-                    btc_side = "Long" if btc_pos.get("position_size", 0) > 0 else "Short"
-                    
-                    if not position_available:
-                        message_parts.append(f"• {btc_symbol} : ${btc_value/1_000_000:.1f}M ({btc_side})")
-            
-            if not position_available and not (btc_detail_data.get("success") and btc_detail_data.get("data")):
+                    message_parts.append(f"• {symbol} : ${position_value/1_000_000:.1f}M ({side})")
+            else:
                 message_parts.append("Position data temporarily unavailable.")
             
             message_parts.append("")
             message_parts.append(f"🔍 Minimum threshold: ${min_usd:,.0f}")
             message_parts.append("📡 Data source: Hyperliquid API")
+            
+            # Debug logging
+            total_alerts = radar_data.get("total_alerts", 0)
+            logger.info(
+                f"[WHALE_DEBUG] alerts={total_alerts} "
+                f"above_threshold={len(symbols_above)} "
+                f"below_threshold={len(symbols_below)} "
+                f"sample_trades={len(sample_trades)} "
+                f"threshold={min_usd}"
+            )
             
             # Combine all parts
             final_message = "\n".join(message_parts)
