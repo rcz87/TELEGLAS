@@ -386,55 +386,107 @@ class LiquidationMonitor:
     async def get_symbol_liquidation_summary(
         self, symbol: str
     ) -> Optional[Dict[str, Any]]:
-        """Get liquidation summary for a specific symbol"""
+        """Get liquidation summary for a specific symbol with fallback to raw data service"""
         try:
             async with self.api as api:
-                # Get liquidation data across all exchanges for this symbol
+                # Try primary endpoint first
                 data = await api.get_liquidation_exchange_list(symbol)
 
-                if not data or not data.get("success", False):
-                    logger.warning(f"Failed to get liquidation summary for {symbol}: {data.get('error') if data else 'No data'}")
-                    return None
+                if data and data.get("success", False):
+                    # Handle different response formats
+                    raw_data = data.get("data", [])
+                    if isinstance(raw_data, dict):
+                        raw_data = [raw_data]
+                    elif not isinstance(raw_data, list):
+                        logger.warning(f"Unexpected liquidation summary format for {symbol}: {type(raw_data)}")
+                        raw_data = []
 
-                # Handle different response formats
-                raw_data = data.get("data", [])
-                if isinstance(raw_data, dict):
-                    raw_data = [raw_data]
-                elif not isinstance(raw_data, list):
-                    logger.warning(f"Unexpected liquidation summary format for {symbol}: {type(raw_data)}")
-                    return None
+                    if raw_data:
+                        # Aggregate data from all exchanges
+                        total_liquidation_usd = 0.0
+                        total_long_liquidation = 0.0
+                        total_short_liquidation = 0.0
+                        exchange_count = 0
 
-                if not raw_data:
-                    return None
+                        for item in raw_data:
+                            if not isinstance(item, dict):
+                                continue
 
-                # Aggregate data from all exchanges
-                total_liquidation_usd = 0.0
-                total_long_liquidation = 0.0
-                total_short_liquidation = 0.0
-                exchange_count = 0
+                            total_liquidation_usd += safe_float(safe_get(item, "liquidation_usd_24h"), 0.0)
+                            total_long_liquidation += safe_float(safe_get(item, "long_liquidation_usd_24h"), 0.0)
+                            total_short_liquidation += safe_float(safe_get(item, "short_liquidation_usd_24h"), 0.0)
+                            exchange_count += 1
 
-                for item in raw_data:
-                    if not isinstance(item, dict):
-                        continue
+                        return {
+                            "symbol": symbol,
+                            "liquidation_usd": total_liquidation_usd,
+                            "long_liquidation_usd": total_long_liquidation,
+                            "short_liquidation_usd": total_short_liquidation,
+                            "exchange_count": exchange_count,
+                            "price_change": 0.0,  # Not available in this endpoint
+                            "volume_24h": 0.0,  # Not available in this endpoint
+                            "last_update": datetime.utcnow().isoformat(),
+                        }
 
-                    total_liquidation_usd += safe_float(safe_get(item, "liquidation_usd_24h"), 0.0)
-                    total_long_liquidation += safe_float(safe_get(item, "long_liquidation_usd_24h"), 0.0)
-                    total_short_liquidation += safe_float(safe_get(item, "short_liquidation_usd_24h"), 0.0)
-                    exchange_count += 1
-
-                return {
-                    "symbol": symbol,
-                    "liquidation_usd": total_liquidation_usd,
-                    "long_liquidation_usd": total_long_liquidation,
-                    "short_liquidation_usd": total_short_liquidation,
-                    "exchange_count": exchange_count,
-                    "price_change": 0.0,  # Not available in this endpoint
-                    "volume_24h": 0.0,  # Not available in this endpoint
-                    "last_update": datetime.utcnow().isoformat(),
-                }
+                # Fallback to raw data service if primary endpoint fails
+                logger.warning(f"Primary liquidation endpoint failed for {symbol}, trying raw data service fallback")
+                return await self._get_liquidation_stats_from_raw(symbol)
 
         except Exception as e:
             logger.error(f"Error getting symbol liquidation summary for {symbol}: {e}")
+            # Try fallback even on exception
+            try:
+                return await self._get_liquidation_stats_from_raw(symbol)
+            except Exception as fallback_error:
+                logger.error(f"Fallback also failed for {symbol}: {fallback_error}")
+                return None
+
+    async def _get_liquidation_stats_from_raw(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Fallback method to get liquidation stats from raw data service"""
+        try:
+            from services.raw_data_service import raw_data_service
+            
+            # Get comprehensive market data which includes liquidation info
+            comprehensive_data = await raw_data_service.get_comprehensive_market_data(symbol)
+            
+            if not comprehensive_data or "liquidations" not in comprehensive_data:
+                logger.warning(f"No liquidation data available in raw service for {symbol}")
+                return None
+                
+            liquidations = comprehensive_data["liquidations"]
+            
+            # Extract liquidation data in the expected format
+            total_liq_24h = safe_float(liquidations.get("total_24h"), 0.0)
+            long_liq_24h = safe_float(liquidations.get("long_liq"), 0.0)
+            short_liq_24h = safe_float(liquidations.get("short_liq"), 0.0)
+            
+            # Get additional data if available
+            price_change = 0.0
+            volume_24h = 0.0
+            
+            if "price_change" in comprehensive_data:
+                price_change = safe_float(comprehensive_data["price_change"].get("24h", 0), 0.0)
+            
+            if "volume" in comprehensive_data:
+                volume_24h = safe_float(comprehensive_data["volume"].get("futures_24h", 0), 0.0)
+            
+            logger.info(f"[FALLBACK] Successfully retrieved liquidation stats for {symbol} from raw service: "
+                       f"Total=${total_liq_24h:,.0f}, Long=${long_liq_24h:,.0f}, Short=${short_liq_24h:,.0f}")
+            
+            return {
+                "symbol": symbol,
+                "liquidation_usd": total_liq_24h,
+                "long_liquidation_usd": long_liq_24h,
+                "short_liquidation_usd": short_liq_24h,
+                "exchange_count": 1,  # Raw service aggregates across exchanges
+                "price_change": price_change,
+                "volume_24h": volume_24h,
+                "last_update": datetime.utcnow().isoformat(),
+                "data_source": "raw_fallback"  # Track that this came from fallback
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting liquidation stats from raw service for {symbol}: {e}")
             return None
 
 
