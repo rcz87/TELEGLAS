@@ -21,10 +21,10 @@ class RawDataService:
             # Resolve symbol first
             resolved_symbol = await self.api.resolve_symbol(symbol)
             if not resolved_symbol:
-                logger.info(f"[RAW] Symbol '{symbol}' not supported by CoinGlass")
+                # logger.info(f"[RAW] Symbol '{symbol}' not supported by CoinGlass")
                 return {"symbol": symbol, "error": "Symbol not supported or data not available from CoinGlass"}
             
-            logger.info(f"[RAW] Fetching comprehensive data for {symbol} -> {resolved_symbol}")
+            # logger.info(f"[RAW] Fetching comprehensive data for {symbol} -> {resolved_symbol}")
             
             async with self.api:
                 # Fetch data from ALL required endpoints concurrently
@@ -92,15 +92,15 @@ class RawDataService:
                 }
                 
                 # DEBUG LOGGING: Log key values for VPS validation
-                logger.info(f"[DEBUG] RAW RSI values for {resolved_symbol}: 1h={rsi_1h_4h_1d_data.get('1h')}, 4h={rsi_1h_4h_1d_data.get('4h')}, 1d={rsi_1h_4h_1d_data.get('1d')}")
+                # logger.info(f"[DEBUG] RAW RSI values for {resolved_symbol}: 1h={rsi_1h_4h_1d_data.get('1h')}, 4h={rsi_1h_4h_1d_data.get('4h')}, 1d={rsi_1h_4h_1d_data.get('1d')}")
                 
                 funding_value = safe_get(raw, "funding", {}).get("current_funding")
-                logger.info(f"[DEBUG] RAW Funding for {resolved_symbol}: {funding_value}")
+                # logger.info(f"[DEBUG] RAW Funding for {resolved_symbol}: {funding_value}")
                 
                 ls_structure = safe_get(raw, "long_short_ratio", {})
-                logger.info(f"[DEBUG] RAW Long/Short for {resolved_symbol}: {ls_structure}")
+                # logger.info(f"[DEBUG] RAW Long/Short for {resolved_symbol}: {ls_structure}")
                 
-                logger.info(f"[RAW] Successfully aggregated data for {resolved_symbol}")
+                # logger.info(f"[RAW] Successfully aggregated data for {resolved_symbol}")
                 return raw
                 
         except Exception as e:
@@ -176,7 +176,7 @@ class RawDataService:
             result = await self.api.get_global_long_short_ratio(futures_pair, "h1", "Binance")
             
             # DEBUG LOGGING: Log raw result for verification
-            logger.info(f"[DEBUG LS] Raw global long/short for {symbol}: {result}")
+            # logger.info(f"[DEBUG LS] Raw global long/short for {symbol}: {result}")
             
             return result
         except Exception as e:
@@ -210,7 +210,7 @@ class RawDataService:
                 
                 if result and result.get("success"):
                     taker_data[tf] = result
-                    logger.info(f"[RAW] ✓ Taker flow {tf} for {symbol}: success")
+                    # logger.info(f"[RAW] ✓ Taker flow {tf} for {symbol}: success")
                 else:
                     # Fallback to v2 taker buy-sell volume history for this timeframe
                     try:
@@ -261,7 +261,7 @@ class RawDataService:
                             # Store all RSI values (0-100), including 0.00 which is valid
                             if 0 <= rsi_value <= 100:
                                 rsi_data[tf] = rsi_value
-                                logger.info(f"[RAW] RSI {tf} for {symbol}: {rsi_value:.2f}")
+                                # logger.info(f"[RAW] RSI {tf} for {symbol}: {rsi_value:.2f}")
                             else:
                                 rsi_data[tf] = None
                                 logger.warning(f"[RAW] Invalid RSI value {rsi_value} for {tf}, setting to None")
@@ -297,7 +297,7 @@ class RawDataService:
             
             # Normalize symbol for RSI endpoint
             normalized_symbol = normalize_future_symbol(symbol)
-            logger.info(f"[RAW] Fetching RSI for {symbol} -> {normalized_symbol} on timeframes: 1h, 4h, 1d")
+            # logger.info(f"[RAW] Fetching RSI for {symbol} -> {normalized_symbol} on timeframes: 1h, 4h, 1d")
 
             # Fetch real RSI data for 1h, 4h, and 1d timeframes concurrently
             tasks = [
@@ -327,7 +327,7 @@ class RawDataService:
                     # Validate RSI is in valid range (0-100)
                     if 0 <= rsi_value <= 100:
                         rsi_data[tf] = rsi_value
-                        logger.info(f"[RAW] ✓ RSI {tf} for {normalized_symbol}: {rsi_value:.2f}")
+                        # logger.info(f"[RAW] ✓ RSI {tf} for {normalized_symbol}: {rsi_value:.2f}")
                     else:
                         rsi_data[tf] = None
                         logger.warning(f"[RAW] Invalid RSI value {rsi_value} for {tf}, setting to None")
@@ -336,7 +336,7 @@ class RawDataService:
                     logger.warning(f"[RAW] RSI {tf} for {normalized_symbol} returned None - API may not have data")
 
             # DEBUG LOGGING: Log final RSI dict for verification
-            logger.info(f"[DEBUG RSI] Final RSI dict for {symbol}: {rsi_data}")
+            # logger.info(f"[DEBUG RSI] Final RSI dict for {symbol}: {rsi_data}")
 
             return rsi_data
 
@@ -374,7 +374,7 @@ class RawDataService:
                         if isinstance(latest, dict):
                             ema_value = safe_float(safe_get(latest, "ema"))
                             ema_data[tf] = ema_value
-                            logger.info(f"[RAW] EMA {tf} for {symbol}: {ema_value:.2f}")
+                            # logger.info(f"[RAW] EMA {tf} for {symbol}: {ema_value:.2f}")
                         else:
                             ema_data[tf] = 0.0
                     else:
@@ -537,6 +537,240 @@ class RawDataService:
                 "agg_bid_ask_ratio": 0.0,
                 "agg_error": str(e)
             }
+
+    async def build_raw_orderbook_data(self, symbol: str) -> dict:
+        """
+        Build data terstruktur untuk /raw_orderbook yang akan diformat di Telegram.
+        """
+        try:
+            # Normalisasi symbol
+            base_symbol, futures_pair = self.api.resolve_orderbook_symbols(symbol)
+            
+            # Panggil 2 endpoint dengan graceful error handling
+            snapshot_result = None
+            binance_depth_result = None
+            aggregated_depth_result = None
+            
+            try:
+                snapshot_result = await self.api.get_orderbook_history(
+                    base_symbol=base_symbol,
+                    futures_pair=futures_pair,
+                    exchange="Binance",
+                    interval="1h",
+                    limit=1
+                )
+            except Exception as e:
+                logger.error(f"[RAW] Error fetching snapshot for {symbol}: {e}")
+                snapshot_result = None
+            
+            try:
+                binance_depth_result = await self.api.get_orderbook_ask_bids_history(
+                    base_symbol=base_symbol,
+                    futures_pair=futures_pair,
+                    exchange="Binance",
+                    interval="1d",
+                    limit=100,
+                    range_param="1"
+                )
+            except Exception as e:
+                logger.error(f"[RAW] Error fetching Binance depth for {symbol}: {e}")
+                binance_depth_result = None
+            
+            try:
+                # Aggregated depth 1H
+                aggregated_depth_result = await self.api.get_aggregated_orderbook_ask_bids_history(
+                    base_symbol=base_symbol,
+                    exchange_list="Binance",
+                    interval="h1",
+                    limit=500
+                )
+            except Exception as e:
+                logger.error(f"[RAW] Error fetching aggregated depth for {symbol}: {e}")
+                aggregated_depth_result = None
+            
+            # Kalkulasi turunan untuk snapshot orderbook
+            snapshot_data = {
+                "timestamp": None,
+                "top_bids": [],
+                "top_asks": [],
+                "best_bid_price": None,
+                "best_bid_qty": None,
+                "best_ask_price": None,
+                "best_ask_qty": None,
+                "spread": None,
+                "mid_price": None,
+            }
+            
+            if snapshot_result:
+                timestamp = snapshot_result.get("time")
+                bids = snapshot_result.get("bids", [])
+                asks = snapshot_result.get("asks", [])
+                
+                # Convert timestamp ke UTC string
+                if timestamp:
+                    try:
+                        from datetime import datetime
+                        dt = datetime.fromtimestamp(timestamp)
+                        snapshot_data["timestamp"] = dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+                    except:
+                        snapshot_data["timestamp"] = "N/A"
+                else:
+                    snapshot_data["timestamp"] = "N/A"
+                
+                # Get top 5 bids dan asks
+                if bids and len(bids) > 0:
+                    snapshot_data["top_bids"] = bids[:5]
+                    best_bid = bids[0]
+                    if isinstance(best_bid, list) and len(best_bid) >= 2:
+                        snapshot_data["best_bid_price"] = best_bid[0]
+                        snapshot_data["best_bid_qty"] = best_bid[1]
+                
+                if asks and len(asks) > 0:
+                    snapshot_data["top_asks"] = asks[:5]
+                    best_ask = asks[0]
+                    if isinstance(best_ask, list) and len(best_ask) >= 2:
+                        snapshot_data["best_ask_price"] = best_ask[0]
+                        snapshot_data["best_ask_qty"] = best_ask[1]
+                
+                # Kalkulasi spread dan mid price
+                if (snapshot_data["best_bid_price"] is not None and 
+                    snapshot_data["best_ask_price"] is not None):
+                    snapshot_data["spread"] = snapshot_data["best_ask_price"] - snapshot_data["best_bid_price"]
+                    snapshot_data["mid_price"] = (snapshot_data["best_bid_price"] + snapshot_data["best_ask_price"]) / 2
+            
+            # Kalkulasi turunan untuk Binance depth
+            binance_depth_data = {
+                "bids_usd": None,
+                "asks_usd": None,
+                "bids_qty": None,
+                "asks_qty": None,
+                "bias_label": None,
+            }
+            
+            if binance_depth_result:
+                # Handle enhanced format with depth_data
+                if isinstance(binance_depth_result, dict) and "depth_data" in binance_depth_result:
+                    # Enhanced format - data is in depth_data dict
+                    depth_data = binance_depth_result.get("depth_data", {})
+                    if isinstance(depth_data, dict):
+                        total_bid_volume = safe_float(depth_data.get("bids_usd", 0))
+                        total_ask_volume = safe_float(depth_data.get("asks_usd", 0))
+                    else:
+                        total_bid_volume = 0.0
+                        total_ask_volume = 0.0
+                else:
+                    # Fallback to direct fields
+                    total_bid_volume = safe_float(binance_depth_result.get("total_bid_volume", 0))
+                    total_ask_volume = safe_float(binance_depth_result.get("total_ask_volume", 0))
+                
+                binance_depth_data["bids_usd"] = total_bid_volume
+                binance_depth_data["asks_usd"] = total_ask_volume
+                binance_depth_data["bids_qty"] = total_bid_volume  # Simplified
+                binance_depth_data["asks_qty"] = total_ask_volume  # Simplified
+                
+                # Kalkulasi bias ratio
+                total_usd = total_bid_volume + total_ask_volume
+                if total_usd > 0:
+                    bias_ratio = (total_bid_volume - total_ask_volume) / total_usd
+                    if bias_ratio > 0.15:
+                        binance_depth_data["bias_label"] = "Dominan BUY"
+                    elif bias_ratio < -0.15:
+                        binance_depth_data["bias_label"] = "Dominan SELL"
+                    else:
+                        binance_depth_data["bias_label"] = "Campuran, seimbang"
+            
+            # Kalkulasi turunan untuk aggregated depth
+            aggregated_depth_data = {
+                "bids_usd": None,
+                "asks_usd": None,
+                "bids_qty": None,
+                "asks_qty": None,
+                "bias_label": None,
+            }
+            
+            if aggregated_depth_result:
+                # Handle enhanced format with aggregated_data
+                if isinstance(aggregated_depth_result, dict) and "aggregated_data" in aggregated_depth_result:
+                    # Enhanced format - data is in aggregated_data dict
+                    agg_data = aggregated_depth_result.get("aggregated_data", {})
+                    if isinstance(agg_data, dict):
+                        aggregated_bids_usd = safe_float(agg_data.get("aggregated_bids_usd", 0))
+                        aggregated_asks_usd = safe_float(agg_data.get("aggregated_asks_usd", 0))
+                        aggregated_bids_quantity = safe_float(agg_data.get("aggregated_bids_quantity", 0))
+                        aggregated_asks_quantity = safe_float(agg_data.get("aggregated_asks_quantity", 0))
+                    else:
+                        aggregated_bids_usd = 0.0
+                        aggregated_asks_usd = 0.0
+                        aggregated_bids_quantity = 0.0
+                        aggregated_asks_quantity = 0.0
+                else:
+                    # Fallback to direct fields
+                    aggregated_bids_usd = safe_float(aggregated_depth_result.get("total_bid_volume", 0))
+                    aggregated_asks_usd = safe_float(aggregated_depth_result.get("total_ask_volume", 0))
+                    aggregated_bids_quantity = 0.0
+                    aggregated_asks_quantity = 0.0
+                
+                aggregated_depth_data["bids_usd"] = aggregated_bids_usd
+                aggregated_depth_data["asks_usd"] = aggregated_asks_usd
+                aggregated_depth_data["bids_qty"] = aggregated_bids_quantity
+                aggregated_depth_data["asks_qty"] = aggregated_asks_quantity
+                
+                # Kalkulasi bias ratio
+                total_usd = aggregated_bids_usd + aggregated_asks_usd
+                if total_usd > 0:
+                    bias_ratio = (aggregated_bids_usd - aggregated_asks_usd) / total_usd
+                    if bias_ratio > 0.15:
+                        aggregated_depth_data["bias_label"] = "Dominan BUY"
+                    elif bias_ratio < -0.15:
+                        aggregated_depth_data["bias_label"] = "Dominan SELL"
+                    else:
+                        aggregated_depth_data["bias_label"] = "Campuran, seimbang"
+            
+            # Return struktur data lengkap
+            return {
+                "exchange": "Binance",
+                "symbol": futures_pair,
+                "interval_ob": "1h",
+                "depth_range": "1%",
+                "snapshot": snapshot_data,
+                "binance_depth": binance_depth_data,
+                "aggregated_depth": aggregated_depth_data,
+            }
+            
+        except Exception as e:
+            logger.error(f"[RAW] Error building raw orderbook data for {symbol}: {e}")
+            # Return minimal structure on error
+            return {
+                "exchange": "Binance",
+                "symbol": symbol,
+                "interval_ob": "1h",
+                "depth_range": "1%",
+                "snapshot": {
+                    "timestamp": None,
+                    "top_bids": [],
+                    "top_asks": [],
+                    "best_bid_price": None,
+                    "best_bid_qty": None,
+                    "best_ask_price": None,
+                    "best_ask_qty": None,
+                    "spread": None,
+                    "mid_price": None,
+                },
+                "binance_depth": {
+                    "bids_usd": None,
+                    "asks_usd": None,
+                    "bids_qty": None,
+                    "asks_qty": None,
+                    "bias_label": None,
+                },
+                "aggregated_depth": {
+                    "bids_usd": None,
+                    "asks_usd": None,
+                    "bids_qty": None,
+                    "asks_qty": None,
+                    "bias_label": None,
+                },
+            }
     
     # DATA EXTRACTION METHODS
     
@@ -679,7 +913,7 @@ class RawDataService:
             # The new get_current_funding_rate returns float directly, not dict with "success" field
             if isinstance(funding_data, (int, float)) and funding_data != 0:
                 current_funding = float(funding_data)  # Direct float from new endpoint
-                logger.info(f"[RAW] Current funding rate from new endpoint: {current_funding:.4f}%")
+                # logger.info(f"[RAW] Current funding rate from new endpoint: {current_funding:.4f}%")
             elif isinstance(funding_data, dict) and funding_data.get("success"):
                 data = safe_get(funding_data, "data", [])
                 if data:
@@ -692,7 +926,7 @@ class RawDataService:
                                safe_float(safe_get(latest, "funding_rate")) or 0.0)
                         if rate != 0.0:  # Only use if non-zero
                             current_funding = rate * 100.0  # Convert to percentage
-                            logger.info(f"[RAW] Current funding rate from fallback: {current_funding:.4f}%")
+                            # logger.info(f"[RAW] Current funding rate from fallback: {current_funding:.4f}%")
         
         funding_history = []
         if funding_history_data and funding_history_data.get("success"):
@@ -715,7 +949,7 @@ class RawDataService:
                         if rate != 0.0:
                             funding_history.append(entry)
                 
-                logger.info(f"[RAW] Found {len(funding_history)} valid funding history entries (filtered out 0.0000% values)")
+                # logger.info(f"[RAW] Found {len(funding_history)} valid funding history entries (filtered out 0.0000% values)")
         
         return {
             "current_funding": current_funding,
@@ -766,7 +1000,7 @@ class RawDataService:
                 # New format: {"long_percent": X, "short_percent": Y, "long_short_ratio": Z}
                 account_ratio = safe_float(ls_data.get("long_short_ratio"))
                 
-                logger.info(f"[RAW] ✓ Long/short extracted from new format: long_short_ratio={account_ratio}")
+                # logger.info(f"[RAW] ✓ Long/short extracted from new format: long_short_ratio={account_ratio}")
                 
                 # If ratio is 0.0 (default from safe_float), treat as missing data
                 if account_ratio == 0.0:
@@ -805,12 +1039,12 @@ class RawDataService:
         latest = data[-1] if data else {}
         if isinstance(latest, dict):
             # Debug: Log available fields
-            logger.info(f"[RAW] Long/short latest entry fields: {list(latest.keys())}")
+            # logger.info(f"[RAW] Long/short latest entry fields: {list(latest.keys())}")
 
             account_ratio = safe_float(safe_get(latest, "longShortRatio"))
             position_ratio = safe_float(safe_get(latest, "positionLongShortRatio"))
 
-            logger.info(f"[RAW] Long/short extracted values: account={account_ratio}, position={position_ratio}")
+            # logger.info(f"[RAW] Long/short extracted values: account={account_ratio}, position={position_ratio}")
 
             # If values are 0.0 (default from safe_float), treat as missing data
             if account_ratio == 0.0:
@@ -853,7 +1087,7 @@ class RawDataService:
         # NEW: Check if we have timeframe-specific data
         timeframe_data = safe_get(taker_data, "timeframe_data", {})
         if timeframe_data:
-            logger.info(f"[RAW] Processing timeframe-specific taker flow data")
+            # logger.info(f"[RAW] Processing timeframe-specific taker flow data")
             
             timeframes = ["5m", "15m", "1h", "4h"]
             for tf in timeframes:
@@ -876,7 +1110,7 @@ class RawDataService:
                                 "net": net_delta,
                                 "trend": trend
                             }
-                            logger.info(f"[RAW] ✓ Taker flow {tf}: Buy {total_buy:.2f}M, Sell {total_sell:.2f}M, Net {net_delta:+.2f}M")
+                            # logger.info(f"[RAW] ✓ Taker flow {tf}: Buy {total_buy:.2f}M, Sell {total_sell:.2f}M, Net {net_delta:+.2f}M")
                         else:
                             logger.warning(f"[RAW] Taker flow {tf} has zero values")
                     else:
@@ -895,7 +1129,7 @@ class RawDataService:
                                         "sell": sell_usd,
                                         "net": net_flow
                                     }
-                                    logger.info(f"[RAW] ✓ Taker flow {tf} (raw): Buy {buy_usd:.2f}M, Sell {sell_usd:.2f}M, Net {net_flow:+.2f}M")
+                                    # logger.info(f"[RAW] ✓ Taker flow {tf} (raw): Buy {buy_usd:.2f}M, Sell {sell_usd:.2f}M, Net {net_flow:+.2f}M")
                 else:
                     logger.warning(f"[RAW] Taker flow {tf} failed or empty")
             
@@ -910,7 +1144,7 @@ class RawDataService:
             net_delta = safe_float(safe_get(summary, "net_delta")) / 1e6  # Convert to millions
             trend = safe_get(summary, "trend", "Neutral")
 
-            logger.info(f"[RAW] Taker flow summary values: Buy={total_buy:.2f}M, Sell={total_sell:.2f}M, Net={net_delta:+.2f}M, Trend={trend}")
+            # logger.info(f"[RAW] Taker flow summary values: Buy={total_buy:.2f}M, Sell={total_sell:.2f}M, Net={net_delta:+.2f}M, Trend={trend}")
 
             # Only use data if we have valid values
             if total_buy > 0 or total_sell > 0:
@@ -924,13 +1158,13 @@ class RawDataService:
                 # WARNING: This copies the SAME summary data to all timeframes
                 # This is a limitation - the summary is for the entire requested period (h1, 100 candles)
                 # not separated by 5m/15m/1h/4h timeframes
-                logger.warning(f"[RAW] NOTE: Using same taker flow summary for all timeframes (API limitation)")
+                # logger.warning(f"[RAW] NOTE: Using same taker flow summary for all timeframes (API limitation)")
                 result["5m"] = flow_data.copy()
                 result["15m"] = flow_data.copy()
                 result["1h"] = flow_data.copy()
                 result["4h"] = flow_data.copy()
 
-                logger.info(f"[RAW] ✓ Extracted taker flow from summary: Buy {total_buy:.2f}M, Sell {total_sell:.2f}M, Net {net_delta:+.2f}M")
+                # logger.info(f"[RAW] ✓ Extracted taker flow from summary: Buy {total_buy:.2f}M, Sell {total_sell:.2f}M, Net {net_delta:+.2f}M")
             else:
                 logger.warning(f"[RAW] Taker flow summary has zero values, keeping N/A")
             return result
@@ -962,10 +1196,11 @@ class RawDataService:
                         result["1h"] = flow_data.copy()
                         result["4h"] = flow_data.copy()
                         
-                        logger.info(f"[RAW] Extracted taker flow from raw: Buy {buy_usd:.2f}M, Sell {sell_usd:.2f}M, Net {net_flow:+.2f}M")
+                        # logger.info(f"[RAW] Extracted taker flow from raw: Buy {buy_usd:.2f}M, Sell {sell_usd:.2f}M, Net {net_flow:+.2f}M")
                     else:
-                        logger.info(f"[RAW] Taker flow data has zero values, keeping N/A")
-        
+                        # logger.info(f"[RAW] Taker flow data has zero values, keeping N/A")
+                        pass
+
         except Exception as e:
             logger.error(f"[RAW] Error extracting taker flow data: {e}")
         

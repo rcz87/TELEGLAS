@@ -21,7 +21,8 @@ from services.whale_watcher import whale_watcher
 from services.funding_rate_radar import funding_rate_radar
 from services.coinglass_api import coinglass_api
 from utils.auth import is_user_allowed, log_access_attempt, get_access_status_message
-from utils.formatters import build_raw_orderbook_text
+from utils.formatters import build_raw_orderbook_text, format_whale_radar_enhanced, format_whale_radar_message
+from handlers.raw_orderbook import raw_orderbook_handler
 
 
 def get_main_menu_keyboard() -> ReplyKeyboardMarkup:
@@ -768,96 +769,30 @@ class TelegramBot:
             sample_trades = await whale_watcher.get_recent_whale_activity(limit=20)  # Get more sample trades
             all_positions = await whale_watcher.get_whale_positions(limit=50)  # Get ALL positions, then sort
             
-            # Build message sections according to requirements
-            message_parts = []
+            # Prepare data for new formatter
+            whale_data = {
+                "active_symbols": enhanced_data.get("active_whale_symbols", []),
+                "recent_trades": sample_trades,
+                "positions": all_positions
+            }
             
-            # Header
-            message_parts.append("🐋 Whale Radar – Hyperliquid (Multi Coin)")
-            message_parts.append("")
+            # Use new clean formatter for Telegram-friendly output
+            formatted_message = format_whale_radar_message(whale_data)
             
-            # NEW SECTION: Active Whale Symbols
-            active_symbols = enhanced_data.get("active_whale_symbols", [])
-            if active_symbols:
-                message_parts.append("Active Whale Symbols:")
-                for i, symbol_data in enumerate(active_symbols[:10], 1):  # Top 10 active symbols
-                    symbol = symbol_data["symbol"]
-                    total_trades = symbol_data["total_trades"]
-                    buy_count = symbol_data["buy_count"]
-                    sell_count = symbol_data["sell_count"]
-                    buy_amounts = symbol_data["buy_amounts"]
-                    sell_amounts = symbol_data["sell_amounts"]
-                    
-                    if buy_count > 0 and sell_count > 0:
-                        # Both buys and sells
-                        buys_str = ", ".join(buy_amounts[:3])  # Show top 3 buys
-                        sells_str = ", ".join(sell_amounts[:3])  # Show top 3 sells
-                        message_parts.append(f"• {symbol} : {total_trades} trades ({buy_count} buys ${buys_str}, {sell_count} sells ${sells_str})")
-                    elif buy_count > 0:
-                        # Only buys
-                        buys_str = ", ".join(buy_amounts[:3])
-                        message_parts.append(f"• {symbol} : {buy_count} whale buys (${buys_str})")
-                    elif sell_count > 0:
-                        # Only sells
-                        sells_str = ", ".join(sell_amounts[:3])
-                        message_parts.append(f"• {symbol} : {sell_count} whale sells (${sells_str})")
-                message_parts.append("")
+            # Send message (plain text to avoid markdown issues)
+            if len(formatted_message) > 4000:  # Telegram limit
+                # Split into chunks if too long
+                chunks = [formatted_message[i:i+4000] for i in range(0, len(formatted_message), 4000)]
+                for chunk in chunks:
+                    await update.message.reply_text(chunk, parse_mode=None)
             else:
-                message_parts.append("Active Whale Symbols: No significant activity detected")
-                message_parts.append("")
-            
-            # Section: Sample Recent Whale Trades (no data truncation)
-            message_parts.append("Sample Recent Whale Trades:")
-            if sample_trades:
-                for i, trade in enumerate(sample_trades[:15], 1):  # Show more sample trades
-                    symbol = trade["symbol"]
-                    side = trade["side"].upper()
-                    amount_usd = trade["amount_usd"]
-                    price = trade["price"]
-                    
-                    # Format amount
-                    if amount_usd >= 1_000_000:
-                        amount_str = f"${amount_usd/1_000_000:.1f}M"
-                    else:
-                        amount_str = f"${amount_usd:,.0f}"
-                    
-                    message_parts.append(f"{i}. [{side}] {symbol} – {amount_str} @ ${price:.4f}")
-                message_parts.append("")
-            else:
-                message_parts.append("No recent whale trades available.")
-                message_parts.append("")
-            
-            # Section: Top Whale Positions (ALL symbols, sorted by notional)
-            message_parts.append("Top Whale Positions:")
-            if all_positions:
-                for i, position in enumerate(all_positions[:15], 1):  # Show top 15 positions
-                    symbol = position["symbol"]
-                    position_value = position["position_value_usd"]
-                    side = position["side"].title() if position["side"] else "Unknown"
-                    
-                    # Format position value
-                    if position_value >= 1_000_000_000:
-                        value_str = f"${position_value/1_000_000_000:.1f}B"
-                    else:
-                        value_str = f"${position_value/1_000_000:.0f}M"
-                    
-                    message_parts.append(f"• {symbol} : {value_str} {side}")
-                message_parts.append("")
-            else:
-                message_parts.append("Position data temporarily unavailable.")
-                message_parts.append("")
-            
-            # Footer with threshold info
-            if user_threshold:
-                message_parts.append(f"🔍 Custom threshold: ${user_threshold:,.0f}")
-            else:
-                message_parts.append(f"🔍 Dynamic thresholds: BTC/ETH $500k, Altcoins $100k")
-            message_parts.append("📡 Data source: Hyperliquid API (ALL symbols, no truncation)")
+                await update.message.reply_text(formatted_message, parse_mode=None)
             
             # Comprehensive logging (as required)
             total_alerts = enhanced_data.get("total_alerts", 0)
             symbols_above_threshold = len(enhanced_data.get("symbols_above_threshold", []))
             symbols_below_threshold = len(enhanced_data.get("symbols_below_threshold", []))
-            active_symbols_count = len(active_symbols)
+            active_symbols_count = len(enhanced_data.get("active_whale_symbols", []))
             
             logger.info(
                 f"[WHALE] Parsed {total_alerts} alerts, "
@@ -865,18 +800,6 @@ class TelegramBot:
                 f"{symbols_below_threshold} symbols below threshold, "
                 f"{active_symbols_count} symbols detected with whale activity."
             )
-            
-            # Combine all parts
-            final_message = "\n".join(message_parts)
-            
-            # Send message (plain text to avoid markdown issues)
-            if len(final_message) > 4000:  # Telegram limit
-                # Split into chunks if too long
-                chunks = [final_message[i:i+4000] for i in range(0, len(final_message), 4000)]
-                for chunk in chunks:
-                    await update.message.reply_text(chunk, parse_mode=None)
-            else:
-                await update.message.reply_text(final_message, parse_mode=None)
             
             logger.info(f"[/whale] Successfully sent enhanced whale radar with {total_alerts} total alerts")
             
@@ -1265,66 +1188,231 @@ class TelegramBot:
     @require_access
     async def handle_raw_orderbook(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /raw_orderbook command - RAW orderbook analysis"""
-        # Extract symbol from command
-        args = context.args
-        if not args or len(args) == 0:
-            await update.message.reply_text("Usage: /raw_orderbook SYMBOL\nExample: /raw_orderbook BTC")
-            return
-        
-        symbol = args[0].upper()
-        
-        # Use new symbol mapping helper
-        base_symbol, futures_pair = coinglass_api.resolve_orderbook_symbols(symbol)
-        
-        # Send typing action
-        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-        
+        # Delegate to the dedicated handler
+        await raw_orderbook_handler(update.message)
+
+    def _format_raw_orderbook_message(self, data: dict) -> str:
+        """Format raw orderbook data according to exact requirements"""
         try:
-            # Fetch all 3 endpoints concurrently with CORRECT parameters
-            async with coinglass_api:
-                tasks = [
-                    coinglass_api.get_orderbook_history(base_symbol, futures_pair, "Binance", "1h", 1),
-                    coinglass_api.get_orderbook_ask_bids_history(base_symbol, futures_pair, "Binance", "1d", 100, "1"),
-                    coinglass_api.get_aggregated_orderbook_ask_bids_history(base_symbol, "Binance", "h1", 500)
-                ]
+            # Extract data
+            exchange = data.get("exchange", "Binance")
+            symbol = data.get("symbol", "UNKNOWN")
+            interval_ob = data.get("interval_ob", "1h")
+            depth_range = data.get("depth_range", "1%")
+            
+            snapshot = data.get("snapshot", {})
+            binance_depth = data.get("binance_depth", {})
+            aggregated_depth = data.get("aggregated_depth", {})
+            
+            # Build message lines
+            lines = []
+            
+            # Header
+            lines.append(f"[RAW ORDERBOOK - {symbol}]")
+            lines.append("")
+            
+            # Info Umum section
+            lines.append("Info Umum")
+            lines.append(f"Exchange       : {exchange}")
+            lines.append(f"Symbol         : {symbol}")
+            lines.append(f"Interval OB    : {interval_ob} (snapshot level)")
+            lines.append(f"Depth Range    : {depth_range}")
+            lines.append("")
+            
+            # Section 1: Snapshot Orderbook (Level Price - History 1H)
+            lines.append("1) Snapshot Orderbook (Level Price - History 1H)")
+            lines.append("")
+            
+            # Extract timestamp from snapshot
+            timestamp = snapshot.get("timestamp", "N/A")
+            if timestamp and timestamp != "N/A":
+                lines.append(f"Timestamp      : {timestamp}")
+            else:
+                lines.append("Timestamp      : N/A")
+            lines.append("")
+            
+            # Extract top bids and asks
+            top_bids = snapshot.get("top_bids", [])
+            top_asks = snapshot.get("top_asks", [])
+            
+            # Display top bids
+            lines.append("Top Bids (Pembeli)")
+            if top_bids:
+                for i, bid in enumerate(top_bids[:5], 1):
+                    if isinstance(bid, list) and len(bid) >= 2:
+                        price = bid[0]
+                        qty = bid[1]
+                        lines.append(f"• {price} → {qty} {symbol.replace('USDT', '')}")
+                    else:
+                        lines.append(f"• Invalid bid data format")
+            else:
+                lines.append("• No bid data available")
+            lines.append("")
+            
+            # Display top asks
+            lines.append("Top Asks (Penjual)")
+            if top_asks:
+                for i, ask in enumerate(top_asks[:5], 1):
+                    if isinstance(ask, list) and len(ask) >= 2:
+                        price = ask[0]
+                        qty = ask[1]
+                        lines.append(f"• {price} → {qty} {symbol.replace('USDT', '')}")
+                    else:
+                        lines.append(f"• Invalid ask data format")
+            else:
+                lines.append("• No ask data available")
+            lines.append("")
+            lines.append("--------------------------------------------------")
+            lines.append("")
+            
+            # Section 2: Binance Orderbook Depth (Bids vs Asks) - 1D
+            lines.append("2) Binance Orderbook Depth (Bids vs Asks) - 1D")
+            lines.append("")
+            
+            bids_usd = binance_depth.get("bids_usd")
+            asks_usd = binance_depth.get("asks_usd")
+            bids_qty = binance_depth.get("bids_qty")
+            asks_qty = binance_depth.get("asks_qty")
+            bias_label = binance_depth.get("bias_label")
+            
+            if bids_usd is not None and asks_usd is not None:
+                # Format USD values
+                def format_usd(value):
+                    if value >= 1_000_000:
+                        return f"${value/1_000_000:.2f}M"
+                    elif value >= 1_000:
+                        return f"${value/1_000:.2f}K"
+                    else:
+                        return f"${value:.2f}"
                 
-                results = await asyncio.gather(*tasks, return_exceptions=True)
+                lines.append(f"Total Bids (USD)  : {format_usd(bids_usd)}")
+                lines.append(f"Total Asks (USD)  : {format_usd(asks_usd)}")
                 
-                history_data = results[0] if not isinstance(results[0], Exception) else None
-                binance_depth_data = results[1] if not isinstance(results[1], Exception) else []
-                aggregated_depth_data = results[2] if not isinstance(results[2], Exception) else []
-                
-                # Check if any data was successfully fetched
-                if not (history_data or binance_depth_data or aggregated_depth_data):
-                    await update.message.reply_text(
-                        "❌ No orderbook data available for this symbol.\n\n"
-                        "Please try a major futures symbol like: BTC, ETH, SOL, etc."
-                    )
-                    return
-                
-                # Build combined report using formatter
-                formatted_message = build_raw_orderbook_text(
-                    symbol=futures_pair,
-                    history_data=history_data,
-                    binance_depth_data=binance_depth_data,
-                    aggregated_depth_data=aggregated_depth_data,
-                    exchange="Binance",
-                    ob_interval="1h",
-                    depth_range="1%"
-                )
-                
-                # Send response
-                if len(formatted_message) > 4000:  # Telegram message limit
-                    # Split into parts if too long
-                    parts = [formatted_message[i:i+4000] for i in range(0, len(formatted_message), 4000)]
-                    for part in parts:
-                        await update.message.reply_text(part)
+                # Calculate percentages
+                total_usd = bids_usd + asks_usd
+                if total_usd > 0:
+                    bid_pct = (bids_usd / total_usd) * 100
+                    ask_pct = (asks_usd / total_usd) * 100
+                    lines.append(f"Bid/Ask Ratio     : {bid_pct:.0f}% vs {ask_pct:.0f}%")
                 else:
-                    await update.message.reply_text(formatted_message)
+                    lines.append("Bid/Ask Ratio     : N/A")
                 
+                # Bias label
+                if bias_label:
+                    lines.append(f"Bias              : {bias_label}")
+                else:
+                    lines.append("Bias              : Data tidak tersedia")
+            else:
+                lines.append("Total Bids (USD)  : $0.00")
+                lines.append("Total Asks (USD)  : $0.00")
+                lines.append("Bid/Ask Ratio     : N/A")
+                lines.append("Bias              : Symbol tidak didukung di endpoint depth ini")
+                lines.append("")
+                lines.append("💡 Catatan: Symbol seperti BOB biasanya tidak didukung")
+                lines.append("   di endpoint depth Binance/Aggregated CoinGlass.")
+                lines.append("   Hanya major futures (BTC, ETH, SOL, dll) yang tersedia.")
+            lines.append("")
+            lines.append("--------------------------------------------------")
+            lines.append("")
+            
+            # Section 3: Aggregated Orderbook Depth (Multi-Exchange) - 1H
+            lines.append("3) Aggregated Orderbook Depth (Multi-Exchange) - 1H")
+            lines.append("")
+            
+            agg_bids_usd = aggregated_depth.get("bids_usd")
+            agg_asks_usd = aggregated_depth.get("asks_usd")
+            agg_bids_qty = aggregated_depth.get("bids_qty")
+            agg_asks_qty = aggregated_depth.get("asks_qty")
+            agg_bias_label = aggregated_depth.get("bias_label")
+            
+            if agg_bids_usd is not None and agg_asks_usd is not None:
+                lines.append(f"Total Bids (USD)  : {format_usd(agg_bids_usd)}")
+                lines.append(f"Total Asks (USD)  : {format_usd(agg_asks_usd)}")
+                
+                # Calculate percentages
+                total_agg_usd = agg_bids_usd + agg_asks_usd
+                if total_agg_usd > 0:
+                    agg_bid_pct = (agg_bids_usd / total_agg_usd) * 100
+                    agg_ask_pct = (agg_asks_usd / total_agg_usd) * 100
+                    lines.append(f"Bid/Ask Ratio     : {agg_bid_pct:.0f}% vs {agg_ask_pct:.0f}%")
+                else:
+                    lines.append("Bid/Ask Ratio     : N/A")
+                
+                # Bias label
+                if agg_bias_label:
+                    lines.append(f"Bias              : {agg_bias_label}")
+                else:
+                    lines.append("Bias              : Data tidak tersedia")
+            else:
+                lines.append("Total Bids (USD)  : $0.00")
+                lines.append("Total Asks (USD)  : $0.00")
+                lines.append("Bid/Ask Ratio     : N/A")
+                lines.append("Bias              : Symbol tidak didukung di endpoint aggregated ini")
+                lines.append("")
+                lines.append("💡 Catatan: Symbol seperti BOB biasanya tidak didukung")
+                lines.append("   di endpoint aggregated CoinGlass.")
+                lines.append("   Hanya major futures (BTC, ETH, SOL, dll) yang tersedia.")
+            lines.append("")
+            lines.append("--------------------------------------------------")
+            lines.append("")
+            
+            # TL;DR Section
+            lines.append("TL;DR Orderbook Bias")
+            
+            # Analyze snapshot bias
+            snapshot_bias_text = "Data tidak tersedia"
+            if top_bids and top_asks:
+                # Extract numeric values from formatted strings
+                bid_levels = []
+                ask_levels = []
+                
+                for bid in top_bids[:3]:  # Top 3 levels
+                    if isinstance(bid, list) and len(bid) >= 2:
+                        bid_levels.append(float(bid[0]))
+                
+                for ask in top_asks[:3]:  # Top 3 levels
+                    if isinstance(ask, list) and len(ask) >= 2:
+                        ask_levels.append(float(ask[0]))
+                
+                if bid_levels and ask_levels:
+                    best_bid = max(bid_levels)
+                    best_ask = min(ask_levels)
+                    spread_pct = ((best_ask - best_bid) / best_bid) * 100
+                    
+                    if spread_pct < 0.1:
+                        snapshot_bias_text = f"OK, spread ketat & likuid di {best_bid}"
+                    elif spread_pct < 0.5:
+                        snapshot_bias_text = f"Likuiditas tebal di sekitar {best_bid}"
+                    else:
+                        snapshot_bias_text = f"Spread lebar, likuiditas tipis di {best_bid}"
+            
+            # Binance depth bias
+            binance_bias_text = "Data tidak tersedia"
+            if bids_usd is not None and asks_usd is not None:
+                if bids_usd > 0 or asks_usd > 0:
+                    binance_bias_text = bias_label if bias_label else "Data terbatas"
+                else:
+                    binance_bias_text = "Symbol tidak didukung di endpoint ini"
+            
+            # Aggregated bias
+            agg_bias_text = "Data tidak tersedia"
+            if agg_bids_usd is not None and agg_asks_usd is not None:
+                if agg_bids_usd > 0 or agg_asks_usd > 0:
+                    agg_bias_text = agg_bias_label if agg_bias_label else "Data terbatas"
+                else:
+                    agg_bias_text = "Symbol tidak didukung di endpoint ini"
+            
+            lines.append(f"• Binance Depth (1D)     : {binance_bias_text}")
+            lines.append(f"• Aggregated Depth (1H)  : {agg_bias_text}")
+            lines.append(f"• Snapshot Level (1H)    : {snapshot_bias_text}")
+            lines.append("")
+            lines.append("Note: Data real dari CoinGlass Orderbook (2 endpoint: history + aggregated).")
+            
+            return "\n".join(lines)
+            
         except Exception as e:
-            logger.error(f"Error handling raw_orderbook command: {e}")
-            await update.message.reply_text("❌ An error occurred while processing your request. Please try again later.")
+            logger.error(f"Error formatting raw orderbook message: {e}")
+            return f"❌ Error formatting orderbook data: {str(e)}\n\nPlease try again later."
 
     def _format_standardized_raw_output(self, data: Dict[str, Any]) -> str:
         """Format comprehensive raw data according to the exact standardized layout"""

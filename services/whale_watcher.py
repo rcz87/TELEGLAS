@@ -844,5 +844,35 @@ class WhaleWatcher:
             }
 
 
+async def get_enhanced_whale_radar(user_threshold: float = None):
+    """
+    Get complete whale radar data including enhanced data, sample trades, and positions
+    
+    Args:
+        user_threshold: Custom threshold for whale detection
+        
+    Returns:
+        Tuple of (enhanced_data, sample_trades, all_positions)
+    """
+    try:
+        watcher = WhaleWatcher()
+        
+        # Get enhanced whale radar data
+        enhanced_data = await watcher.get_enhanced_whale_radar_data(user_threshold)
+        
+        # Get sample recent whale trades
+        sample_trades_result = await watcher.get_recent_whale_activity(limit=20)
+        sample_trades = sample_trades_result if isinstance(sample_trades_result, list) else sample_trades_result.get('trades', [])
+        
+        # Get whale positions
+        all_positions = await watcher.get_whale_positions(limit=20)
+        
+        return enhanced_data, sample_trades, all_positions
+        
+    except Exception as e:
+        logger.error(f"Error getting complete whale radar: {e}")
+        return {}, [], []
+
+
 # Global whale watcher instance
 whale_watcher = WhaleWatcher()

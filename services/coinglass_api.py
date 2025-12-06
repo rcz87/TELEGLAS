@@ -1425,6 +1425,69 @@ class CoinGlassAPI:
             logger.error(f"[COINGLASS ORDERBOOK ERROR] /api/futures/orderbook/history exception: {e}")
             return None
 
+    async def get_orderbook_history_snapshot(
+        self,
+        symbol: str,
+        exchange: str = "Binance",
+        interval: str = "1h",
+        limit: int = 1,
+    ) -> Optional[dict]:
+        """
+        Ambil snapshot orderbook history untuk 1 symbol & 1 exchange.
+        Response raw mengikuti format CoinGlass:
+        data = [
+          [
+            time (epoch seconds),
+            bids = [[price, qty], ...],
+            asks = [[price, qty], ...]
+          ],
+          ...
+        ]
+        """
+        try:
+            # Use CORRECT params as specified in requirements
+            params = {
+                "exchange": exchange,
+                "symbol": symbol,  # Use futures_pair (BTCUSDT)
+                "interval": interval,
+                "limit": limit
+            }
+            
+            # DEBUG LOGGING: Log the exact request being made
+            logger.debug(f"[COINGLASS ORDERBOOK REQUEST] /api/futures/orderbook/history params={params}")
+            
+            result = await self._make_request("/api/futures/orderbook/history", params)
+            
+            # Enhanced error handling
+            if not result.get("success"):
+                error_msg = result.get('error', 'Unknown error')
+                logger.error(f"[COINGLASS ORDERBOOK ERROR] /api/futures/orderbook/history failed: {error_msg}")
+                return None
+            
+            data = result.get("data", [])
+            if not data or not isinstance(data, list):
+                logger.warning(f"[COINGLASS ORDERBOOK] No data returned for orderbook history")
+                return None
+            
+            # FIXED: Handle the actual data format [timestamp, [bids], [asks]]
+            latest_snapshot = data[-1] if data else None
+            if latest_snapshot and isinstance(latest_snapshot, list) and len(latest_snapshot) >= 3:
+                timestamp = latest_snapshot[0]
+                bids = latest_snapshot[1] if len(latest_snapshot) > 1 else []
+                asks = latest_snapshot[2] if len(latest_snapshot) > 2 else []
+                
+                return {
+                    "time": timestamp,
+                    "bids": bids,
+                    "asks": asks,
+                }
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"[COINGLASS ORDERBOOK ERROR] /api/futures/orderbook/history exception: {e}")
+            return None
+
     async def get_orderbook_ask_bids_history(
         self,
         base_symbol: str,
@@ -1433,10 +1496,11 @@ class CoinGlassAPI:
         interval: str = "1d",
         limit: int = 100,
         range_param: str = "1"
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """
         Get orderbook ask-bids history - endpoint 2
         Returns depth analysis data for bid/ask volume
+        Enhanced with proper support detection
         """
         try:
             # Use CORRECT params as specified in requirements
@@ -1453,21 +1517,44 @@ class CoinGlassAPI:
             
             result = await self._make_request("/api/futures/orderbook/ask-bids-history", params)
             
-            # Enhanced error handling
+            # Enhanced error handling with support detection
             if not result.get("success"):
                 error_msg = result.get('error', 'Unknown error')
-                logger.error(f"[COINGLASS ORDERBOOK ERROR] /api/futures/orderbook/ask-bids-history failed: {error_msg}")
-                return None
+                logger.warning(f"[COINGLASS ORDERBOOK] /api/futures/orderbook/ask-bids-history failed: {error_msg}")
+                
+                # Check if this is a "symbol not supported" error
+                if any(keyword in error_msg.lower() for keyword in ["not supported", "invalid symbol", "no data", "symbol not found"]):
+                    return {
+                        "success": False,
+                        "supported": False,
+                        "data": [],
+                        "error": error_msg,
+                        "message": f"Symbol {futures_pair} not supported by this endpoint"
+                    }
+                
+                return {
+                    "success": False,
+                    "supported": True,  # Might be supported but other error
+                    "data": [],
+                    "error": error_msg
+                }
             
             data = result.get("data", [])
             if not data or not isinstance(data, list):
                 logger.warning(f"[COINGLASS ORDERBOOK] No data returned for ask-bids history")
-                return None
+                
+                # Check if empty data means symbol not supported
+                return {
+                    "success": True,
+                    "supported": False,  # Empty data likely means not supported
+                    "data": [],
+                    "message": f"No data available for symbol {futures_pair} - likely not supported by this endpoint"
+                }
             
             # Process depth data to calculate bid/ask volumes
             latest_data = data[-1] if data else None
             if latest_data and isinstance(latest_data, dict):
-                # Calculate total bid and ask volumes within the range
+                # Calculate total bid and ask volumes within range
                 bids_data = latest_data.get("bids", [])
                 asks_data = latest_data.get("asks", [])
                 
@@ -1476,6 +1563,8 @@ class CoinGlassAPI:
                 bid_ask_ratio = total_bid_volume / max(total_ask_volume, 1.0)
                 
                 return {
+                    "success": True,
+                    "supported": True,
                     "timestamp": latest_data.get("time"),
                     "total_bid_volume": total_bid_volume,
                     "total_ask_volume": total_ask_volume,
@@ -1485,11 +1574,22 @@ class CoinGlassAPI:
                     "depth_data": latest_data
                 }
             
-            return None
+            # Empty data but successful response
+            return {
+                "success": True,
+                "supported": False,
+                "data": [],
+                "message": f"No depth data available for symbol {futures_pair}"
+            }
             
         except Exception as e:
             logger.error(f"[COINGLASS ORDERBOOK ERROR] /api/futures/orderbook/ask-bids-history exception: {e}")
-            return None
+            return {
+                "success": False,
+                "supported": True,  # Exception doesn't mean unsupported
+                "data": [],
+                "error": str(e)
+            }
 
     async def get_aggregated_orderbook_ask_bids_history(
         self,
@@ -1497,10 +1597,11 @@ class CoinGlassAPI:
         exchange_list: str = "Binance",
         interval: str = "h1",
         limit: int = 500,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """
         Get aggregated orderbook ask-bids history - endpoint 3
         Returns multi-exchange aggregated depth data
+        Enhanced with proper support detection
         """
         try:
             # Use CORRECT params as specified in requirements
@@ -1508,6 +1609,110 @@ class CoinGlassAPI:
                 "exchange_list": exchange_list,
                 "symbol": base_symbol,  # Use base_symbol (BTC)
                 "interval": interval,
+                "limit": limit
+            }
+            
+            # DEBUG LOGGING: Log the exact request being made
+            logger.debug(f"[COINGLASS ORDERBOOK REQUEST] /api/futures/orderbook/aggregated-ask-bids-history params={params}")
+            
+            result = await self._make_request("/api/futures/orderbook/aggregated-ask-bids-history", params)
+            
+            # Enhanced error handling with support detection
+            if not result.get("success"):
+                error_msg = result.get('error', 'Unknown error')
+                logger.warning(f"[COINGLASS ORDERBOOK] /api/futures/orderbook/aggregated-ask-bids-history failed: {error_msg}")
+                
+                # Check if this is a "symbol not supported" error
+                if any(keyword in error_msg.lower() for keyword in ["not supported", "invalid symbol", "no data", "symbol not found"]):
+                    return {
+                        "success": False,
+                        "supported": False,
+                        "data": [],
+                        "error": error_msg,
+                        "message": f"Symbol {base_symbol} not supported by this endpoint"
+                    }
+                
+                return {
+                    "success": False,
+                    "supported": True,  # Might be supported but other error
+                    "data": [],
+                    "error": error_msg
+                }
+            
+            data = result.get("data", [])
+            if not data or not isinstance(data, list):
+                logger.warning(f"[COINGLASS ORDERBOOK] No data returned for aggregated ask-bids history")
+                
+                # Check if empty data means symbol not supported
+                return {
+                    "success": True,
+                    "supported": False,  # Empty data likely means not supported
+                    "data": [],
+                    "message": f"No data available for symbol {base_symbol} - likely not supported by this endpoint"
+                }
+            
+            # Process aggregated data
+            latest_data = data[-1] if data else None
+            if latest_data and isinstance(latest_data, dict):
+                # Calculate aggregated bid/ask volumes across exchanges
+                bids_data = latest_data.get("bids", [])
+                asks_data = latest_data.get("asks", [])
+                
+                total_bid_volume = sum(safe_float(bid.get("size", 0)) for bid in bids_data if isinstance(bid, dict))
+                total_ask_volume = sum(safe_float(ask.get("size", 0)) for ask in asks_data if isinstance(ask, dict))
+                bid_ask_ratio = total_bid_volume / max(total_ask_volume, 1.0)
+                
+                return {
+                    "success": True,
+                    "supported": True,
+                    "timestamp": latest_data.get("time"),
+                    "total_bid_volume": total_bid_volume,
+                    "total_ask_volume": total_ask_volume,
+                    "bid_ask_ratio": bid_ask_ratio,
+                    "bids": bids_data,
+                    "asks": asks_data,
+                    "aggregated_data": latest_data,
+                    "exchange_list": exchange_list
+                }
+            
+            # Empty data but successful response
+            return {
+                "success": True,
+                "supported": False,
+                "data": [],
+                "message": f"No aggregated depth data available for symbol {base_symbol}"
+            }
+            
+        except Exception as e:
+            logger.error(f"[COINGLASS ORDERBOOK ERROR] /api/futures/orderbook/aggregated-ask-bids-history exception: {e}")
+            return {
+                "success": False,
+                "supported": True,  # Exception doesn't mean unsupported
+                "data": [],
+                "error": str(e)
+            }
+
+    async def get_aggregated_orderbook_depth(
+        self,
+        symbol: str,
+        exchange_list: str = "Binance",
+        interval: str = "h1",
+        depth_range: str = "1",
+        limit: int = 1,
+    ) -> Optional[dict]:
+        """
+        Ambil aggregated orderbook depth (bids vs asks) untuk 1 symbol.
+        Dipakai untuk:
+        - Binance only (exchange_list="Binance")
+        - Multi-exchange (exchange_list="ALL" atau "Binance,OKX,Bybit", sesuai style kamu)
+        """
+        try:
+            # Use CORRECT params as specified in requirements
+            params = {
+                "exchange_list": exchange_list,
+                "symbol": symbol,  # Use base symbol (BTC)
+                "interval": interval,  # IMPORTANT: Must be "h1", not "1h"
+                "range": depth_range,  # Use depth_range (default "1" = ±1%)
                 "limit": limit
             }
             
@@ -1536,17 +1741,21 @@ class CoinGlassAPI:
                 
                 total_bid_volume = sum(safe_float(bid.get("size", 0)) for bid in bids_data if isinstance(bid, dict))
                 total_ask_volume = sum(safe_float(ask.get("size", 0)) for ask in asks_data if isinstance(ask, dict))
-                bid_ask_ratio = total_bid_volume / max(total_ask_volume, 1.0)
+                
+                # Calculate USD values from size and price
+                aggregated_bids_usd = sum(safe_float(bid.get("size", 0)) * safe_float(bid.get("price", 0)) for bid in bids_data if isinstance(bid, dict))
+                aggregated_asks_usd = sum(safe_float(ask.get("size", 0)) * safe_float(ask.get("price", 0)) for ask in asks_data if isinstance(ask, dict))
+                
+                # Calculate quantities
+                aggregated_bids_quantity = sum(safe_float(bid.get("size", 0)) for bid in bids_data if isinstance(bid, dict))
+                aggregated_asks_quantity = sum(safe_float(ask.get("size", 0)) for ask in asks_data if isinstance(ask, dict))
                 
                 return {
-                    "timestamp": latest_data.get("time"),
-                    "total_bid_volume": total_bid_volume,
-                    "total_ask_volume": total_ask_volume,
-                    "bid_ask_ratio": bid_ask_ratio,
-                    "bids": bids_data,
-                    "asks": asks_data,
-                    "aggregated_data": latest_data,
-                    "exchange_list": exchange_list
+                    "aggregated_bids_usd": aggregated_bids_usd,
+                    "aggregated_asks_usd": aggregated_asks_usd,
+                    "aggregated_bids_quantity": aggregated_bids_quantity,
+                    "aggregated_asks_quantity": aggregated_asks_quantity,
+                    "time": latest_data.get("time")  # epoch millis dari CoinGlass
                 }
             
             return None
@@ -1682,10 +1891,10 @@ class CoinGlassAPI:
             # First resolve the symbol
             resolved_symbol = await self.resolve_symbol(symbol)
             if not resolved_symbol:
-                logger.info(f"[RAW_SINGLE] Symbol '{symbol}' not supported by CoinGlass")
+                # logger.info(f"[RAW_SINGLE] Symbol '{symbol}' not supported by CoinGlass")
                 raise SymbolNotSupported(f"Symbol '{symbol}' not supported by CoinGlass")
             
-            logger.info(f"[RAW_SINGLE] Fetching raw data for {symbol} -> {resolved_symbol}")
+            # logger.info(f"[RAW_SINGLE] Fetching raw data for {symbol} -> {resolved_symbol}")
             
             async with self:
                 # Fetch data from confirmed working endpoints concurrently
@@ -1752,7 +1961,7 @@ class CoinGlassAPI:
                     "confidence": confidence,
                 }
                 
-                logger.info(f"[RAW_SINGLE] Successfully fetched raw data for {resolved_symbol} (confidence: {confidence})")
+                # logger.info(f"[RAW_SINGLE] Successfully fetched raw data for {resolved_symbol} (confidence: {confidence})")
                 return result
                 
         except SymbolNotSupported:
@@ -1892,7 +2101,7 @@ class CoinGlassAPI:
                             oi_value = safe_float(item.get("open_interest_usd"))
                             if oi_value > 0:
                                 current_oi = oi_value
-                                logger.info(f"[RAW_DATA] Found OI from markets: {current_oi}")
+                                # logger.info(f"[RAW_DATA] Found OI from markets: {current_oi}")
                                 break
             except Exception as e:
                 logger.warning(f"[RAW_DATA] Markets OI fallback failed: {e}")
@@ -1911,7 +2120,7 @@ class CoinGlassAPI:
                         if valid_data:
                             latest_data = valid_data[-1]
                             current_oi = safe_float(latest_data.get("close"))
-                            logger.info(f"[RAW_DATA] Found OI from history: {current_oi}")
+                            # logger.info(f"[RAW_DATA] Found OI from history: {current_oi}")
             
             # Create mock exchange breakdown based on typical distribution if we have OI
             exchange_oi = {}
@@ -1983,7 +2192,7 @@ class CoinGlassAPI:
         """
         try:
             normalized_symbol = self.normalize_symbol(symbol)
-            logger.info(f"[RAW_DATA] Fetching market snapshot for {symbol} -> {normalized_symbol}")
+            # logger.info(f"[RAW_DATA] Fetching market snapshot for {symbol} -> {normalized_symbol}")
             
             async with self:
                 # Fetch data from confirmed working endpoints concurrently
@@ -2015,7 +2224,7 @@ class CoinGlassAPI:
                     "long_short_ratio": ls_ratio_data,
                 }
                 
-                logger.info(f"[RAW_DATA] Successfully fetched snapshot for {normalized_symbol}")
+                # logger.info(f"[RAW_DATA] Successfully fetched snapshot for {normalized_symbol}")
                 return snapshot
                 
         except Exception as e:
