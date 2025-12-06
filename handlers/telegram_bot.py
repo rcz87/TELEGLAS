@@ -328,48 +328,401 @@ class TelegramBot:
     async def handle_sentiment(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ):
-        """Handle /sentiment command"""
+        """Handle /sentiment command - Enhanced with fallback mechanism"""
 
-        # Get Fear & Greed Index
-        fear_greed = await funding_rate_radar.get_fear_greed_index()
+        # Send typing action
+        await update.message.chat.send_action(action="typing")
 
-        if not fear_greed:
+        try:
+            # Initialize sentiment data collection
+            sentiment_data = {
+                "fear_greed": None,
+                "funding_sentiment": None,
+                "oi_trend": None,
+                "market_trend": None,
+                "ls_ratio": None
+            }
+
+            # Try to get Fear & Greed Index
+            try:
+                fear_greed = await funding_rate_radar.get_fear_greed_index()
+                if fear_greed:
+                    sentiment_data["fear_greed"] = fear_greed
+                    logger.info("[SENTIMENT] Successfully retrieved Fear & Greed Index")
+                else:
+                    logger.warning("[SENTIMENT] Fear & Greed Index unavailable")
+            except Exception as e:
+                logger.warning(f"[SENTIMENT] Fear & Greed Index failed: {e}")
+
+            # Try to get funding sentiment from major symbols
+            try:
+                funding_sentiment = await self._get_funding_sentiment()
+                if funding_sentiment:
+                    sentiment_data["funding_sentiment"] = funding_sentiment
+                    logger.info("[SENTIMENT] Successfully retrieved funding sentiment")
+            except Exception as e:
+                logger.warning(f"[SENTIMENT] Funding sentiment failed: {e}")
+
+            # Try to get OI trend
+            try:
+                oi_trend = await self._get_oi_trend()
+                if oi_trend:
+                    sentiment_data["oi_trend"] = oi_trend
+                    logger.info("[SENTIMENT] Successfully retrieved OI trend")
+            except Exception as e:
+                logger.warning(f"[SENTIMENT] OI trend failed: {e}")
+
+            # Try to get market trend
+            try:
+                market_trend = await self._get_market_trend()
+                if market_trend:
+                    sentiment_data["market_trend"] = market_trend
+                    logger.info("[SENTIMENT] Successfully retrieved market trend")
+            except Exception as e:
+                logger.warning(f"[SENTIMENT] Market trend failed: {e}")
+
+            # Try to get L/S ratio for BTC as market indicator
+            try:
+                ls_ratio = await self._get_ls_ratio_sentiment()
+                if ls_ratio:
+                    sentiment_data["ls_ratio"] = ls_ratio
+                    logger.info("[SENTIMENT] Successfully retrieved L/S ratio sentiment")
+            except Exception as e:
+                logger.warning(f"[SENTIMENT] L/S ratio sentiment failed: {e}")
+
+            # Check if we have any data
+            has_data = any(sentiment_data.values())
+            
+            if not has_data:
+                await update.message.reply_text(
+                    self.sanitize("❌ *Service Unavailable*\n\n"
+                    "Could not retrieve market sentiment data.\n"
+                    "Please try again in a few moments."),
+                    parse_mode="Markdown",
+                )
+                return
+
+            # Format comprehensive sentiment message
+            message = self._format_sentiment_message(sentiment_data)
+            
+            await update.message.reply_text(message, parse_mode="Markdown")
+
+        except Exception as e:
+            logger.error(f"[SENTIMENT] Error in handle_sentiment: {e}")
             await update.message.reply_text(
-                self.sanitize("❌ *Service Unavailable*\n\n"
-                "Could not retrieve market sentiment data.\n"
-                "Please try again in a few moments."),
+                self.sanitize("❌ *Error*\n\n"
+                "Failed to process sentiment data.\n"
+                "Please try again later."),
                 parse_mode="Markdown",
             )
-            return
 
-        # Determine emoji based on value
-        value = fear_greed["value"]
-        if value <= 20:
-            emoji = "😱"
-        elif value <= 40:
-            emoji = "😰"
-        elif value <= 60:
-            emoji = "😐"
-        elif value <= 80:
-            emoji = "😏"
-        else:
-            emoji = "😈"
+    async def _get_funding_sentiment(self) -> Optional[Dict[str, Any]]:
+        """Get funding sentiment from major symbols"""
+        try:
+            # Check funding rates for major symbols
+            major_symbols = ["BTC", "ETH"]
+            positive_count = 0
+            negative_count = 0
+            neutral_count = 0
+            total_rate = 0.0
+            valid_data = 0
 
-        message = (
-            f"{emoji} *Market Sentiment Analysis*\n\n"
-            f"📊 Fear & Greed Index: {value}\n"
-            f"🏷️ Classification: {self.sanitize(fear_greed['classification'])}\n"
-            f"📝 Interpretation: {self.sanitize(fear_greed['interpretation'])}\n"
-            f"🕐 Updated: {self.sanitize(fear_greed['timestamp'])}\n\n"
-            f"📈 *Market Overview:*\n"
-            f"• Extreme Fear (0-20): Good buying opportunity\n"
-            f"• Fear (20-40): Accumulate gradually\n"
-            f"• Neutral (40-60): Hold positions\n"
-            f"• Greed (60-80): Consider taking profits\n"
-            f"• Extreme Greed (80-100): High risk zone"
-        )
+            async with coinglass_api:
+                for symbol in major_symbols:
+                    try:
+                        funding_data = await coinglass_api.get_funding_rate_exchange_list(symbol)
+                        if funding_data.get("success"):
+                            data = funding_data.get("data", [])
+                            if isinstance(data, list):
+                                for item in data:
+                                    if isinstance(item, dict):
+                                        rate = coinglass_api.safe_float(item.get("fundingRate"), 0.0)
+                                        if abs(rate) < 0.1:  # Filter unrealistic rates
+                                            total_rate += rate
+                                            valid_data += 1
+                                            if rate > 0.001:  # > 0.1%
+                                                positive_count += 1
+                                            elif rate < -0.001:  # < -0.1%
+                                                negative_count += 1
+                                            else:
+                                                neutral_count += 1
+                                        break  # Take first valid exchange
+                    except Exception as e:
+                        logger.debug(f"[SENTIMENT] Failed to get funding for {symbol}: {e}")
+                        continue
 
-        await update.message.reply_text(message, parse_mode="Markdown")
+            if valid_data == 0:
+                return None
+
+            avg_rate = total_rate / valid_data if valid_data > 0 else 0.0
+            
+            # Determine sentiment
+            if positive_count > negative_count:
+                sentiment = "Bullish"
+                emoji = "🟢"
+            elif negative_count > positive_count:
+                sentiment = "Bearish"
+                emoji = "🔴"
+            else:
+                sentiment = "Neutral"
+                emoji = "🟡"
+
+            return {
+                "sentiment": sentiment,
+                "emoji": emoji,
+                "avg_rate": avg_rate * 100,  # Convert to percentage
+                "positive_count": positive_count,
+                "negative_count": negative_count,
+                "neutral_count": neutral_count,
+                "total_symbols": len(major_symbols)
+            }
+
+        except Exception as e:
+            logger.error(f"[SENTIMENT] Error getting funding sentiment: {e}")
+            return None
+
+    async def _get_oi_trend(self) -> Optional[Dict[str, Any]]:
+        """Get Open Interest trend for major symbols"""
+        try:
+            # Check OI trend for BTC
+            async with coinglass_api:
+                try:
+                    oi_data = await coinglass_api.get_open_interest_exchange_list("BTC")
+                    if oi_data.get("success"):
+                        data = oi_data.get("data", [])
+                        if isinstance(data, list) and len(data) >= 2:
+                            # Get recent data points
+                            recent_data = data[-2:]  # Last 2 data points
+                            if len(recent_data) >= 2:
+                                current_oi = coinglass_api.safe_float(recent_data[-1].get("close", 0))
+                                previous_oi = coinglass_api.safe_float(recent_data[-2].get("close", 0))
+                                
+                                if current_oi > 0 and previous_oi > 0:
+                                    change_pct = ((current_oi - previous_oi) / previous_oi) * 100
+                                    
+                                    if change_pct > 2:
+                                        trend = "Increasing"
+                                        emoji = "📈"
+                                    elif change_pct < -2:
+                                        trend = "Decreasing"
+                                        emoji = "📉"
+                                    else:
+                                        trend = "Stable"
+                                        emoji = "➡️"
+                                    
+                                    return {
+                                        "trend": trend,
+                                        "emoji": emoji,
+                                        "change_pct": change_pct,
+                                        "current_oi": current_oi,
+                                        "previous_oi": previous_oi
+                                    }
+                except Exception as e:
+                    logger.debug(f"[SENTIMENT] OI trend analysis failed: {e}")
+
+            return None
+
+        except Exception as e:
+            logger.error(f"[SENTIMENT] Error getting OI trend: {e}")
+            return None
+
+    async def _get_market_trend(self) -> Optional[Dict[str, Any]]:
+        """Get market trend from price changes"""
+        try:
+            # Get price change data for major symbols
+            async with coinglass_api:
+                try:
+                    price_data = await coinglass_api.get_price_change_list()
+                    if price_data.get("success"):
+                        data = price_data.get("data", [])
+                        if isinstance(data, list):
+                            # Find BTC and ETH
+                            btc_data = None
+                            eth_data = None
+                            
+                            for item in data:
+                                if isinstance(item, dict):
+                                    symbol = str(item.get("symbol", "")).upper()
+                                    if symbol == "BTC":
+                                        btc_data = item
+                                    elif symbol == "ETH":
+                                        eth_data = item
+                            
+                            # Analyze trend
+                            bullish_count = 0
+                            bearish_count = 0
+                            total_change = 0.0
+                            valid_count = 0
+                            
+                            for item in [btc_data, eth_data]:
+                                if item:
+                                    change_24h = coinglass_api.safe_float(item.get("price_change_percent_24h", 0))
+                                    if change_24h != 0:
+                                        total_change += change_24h
+                                        valid_count += 1
+                                        if change_24h > 0:
+                                            bullish_count += 1
+                                        elif change_24h < 0:
+                                            bearish_count += 1
+                            
+                            if valid_count > 0:
+                                avg_change = total_change / valid_count
+                                
+                                if bullish_count > bearish_count and avg_change > 1:
+                                    trend = "Bullish"
+                                    emoji = "🟢"
+                                elif bearish_count > bullish_count and avg_change < -1:
+                                    trend = "Bearish"
+                                    emoji = "🔴"
+                                else:
+                                    trend = "Neutral"
+                                    emoji = "🟡"
+                                
+                                return {
+                                    "trend": trend,
+                                    "emoji": emoji,
+                                    "avg_change": avg_change,
+                                    "bullish_count": bullish_count,
+                                    "bearish_count": bearish_count,
+                                    "valid_count": valid_count
+                                }
+                except Exception as e:
+                    logger.debug(f"[SENTIMENT] Market trend analysis failed: {e}")
+
+            return None
+
+        except Exception as e:
+            logger.error(f"[SENTIMENT] Error getting market trend: {e}")
+            return None
+
+    async def _get_ls_ratio_sentiment(self) -> Optional[Dict[str, Any]]:
+        """Get L/S ratio sentiment from BTC"""
+        try:
+            async with coinglass_api:
+                try:
+                    ls_data = await coinglass_api.get_global_long_short_ratio("BTC", "Binance", "h1")
+                    if ls_data:
+                        long_percent = coinglass_api.safe_float(ls_data.get("long_percent", 0))
+                        short_percent = coinglass_api.safe_float(ls_data.get("short_percent", 0))
+                        
+                        if long_percent > 0 and short_percent > 0:
+                            if long_percent > 60:
+                                sentiment = "Long Dominant"
+                                emoji = "🟢"
+                            elif short_percent > 60:
+                                sentiment = "Short Dominant"
+                                emoji = "🔴"
+                            else:
+                                sentiment = "Balanced"
+                                emoji = "🟡"
+                            
+                            return {
+                                "sentiment": sentiment,
+                                "emoji": emoji,
+                                "long_percent": long_percent,
+                                "short_percent": short_percent
+                            }
+                except Exception as e:
+                    logger.debug(f"[SENTIMENT] L/S ratio analysis failed: {e}")
+
+            return None
+
+        except Exception as e:
+            logger.error(f"[SENTIMENT] Error getting L/S ratio sentiment: {e}")
+            return None
+
+    def _format_sentiment_message(self, sentiment_data: Dict[str, Any]) -> str:
+        """Format comprehensive sentiment message"""
+        try:
+            message_parts = []
+            
+            # Header
+            message_parts.append("📊 *Market Sentiment Analysis*\n")
+            
+            # Fear & Greed Index
+            if sentiment_data.get("fear_greed"):
+                fg = sentiment_data["fear_greed"]
+                value = fg.get("value", 0)
+                classification = fg.get("classification", "Unknown")
+                interpretation = fg.get("interpretation", "")
+                timestamp = fg.get("timestamp", "")
+                
+                # Determine emoji based on value
+                if value <= 20:
+                    emoji = "😱"
+                elif value <= 40:
+                    emoji = "😰"
+                elif value <= 60:
+                    emoji = "😐"
+                elif value <= 80:
+                    emoji = "😏"
+                else:
+                    emoji = "😈"
+                
+                message_parts.append(
+                    f"{emoji} *Fear & Greed Index: {value}*\n"
+                    f"🏷️ Classification: {self.sanitize(classification)}\n"
+                    f"📝 {self.sanitize(interpretation)}\n"
+                )
+            
+            # Market Trend
+            if sentiment_data.get("market_trend"):
+                mt = sentiment_data["market_trend"]
+                emoji = mt.get("emoji", "📊")
+                trend = mt.get("trend", "Unknown")
+                avg_change = mt.get("avg_change", 0)
+                
+                message_parts.append(
+                    f"{emoji} *Market Trend: {trend}*\n"
+                    f"📈 Average Change: {avg_change:+.2f}%\n"
+                )
+            
+            # Funding Sentiment
+            if sentiment_data.get("funding_sentiment"):
+                fs = sentiment_data["funding_sentiment"]
+                emoji = fs.get("emoji", "💰")
+                sentiment = fs.get("sentiment", "Unknown")
+                avg_rate = fs.get("avg_rate", 0)
+                
+                message_parts.append(
+                    f"{emoji} *Funding Sentiment: {sentiment}*\n"
+                    f"💸 Average Rate: {avg_rate:+.4f}%\n"
+                )
+            
+            # OI Trend
+            if sentiment_data.get("oi_trend"):
+                oi = sentiment_data["oi_trend"]
+                emoji = oi.get("emoji", "📊")
+                trend = oi.get("trend", "Unknown")
+                change_pct = oi.get("change_pct", 0)
+                
+                message_parts.append(
+                    f"{emoji} *OI Trend: {trend}*\n"
+                    f"📊 Change: {change_pct:+.2f}%\n"
+                )
+            
+            # L/S Ratio
+            if sentiment_data.get("ls_ratio"):
+                ls = sentiment_data["ls_ratio"]
+                emoji = ls.get("emoji", "⚖️")
+                sentiment = ls.get("sentiment", "Unknown")
+                long_percent = ls.get("long_percent", 0)
+                short_percent = ls.get("short_percent", 0)
+                
+                message_parts.append(
+                    f"{emoji} *L/S Ratio: {sentiment}*\n"
+                    f"🟢 Long: {long_percent:.1f}% | 🔴 Short: {short_percent:.1f}%\n"
+                )
+            
+            # Footer
+            message_parts.append("\n📡 *Data Sources:* CoinGlass API")
+            message_parts.append("⚡ *Real-time Market Intelligence*")
+            
+            return "\n".join(message_parts)
+            
+        except Exception as e:
+            logger.error(f"[SENTIMENT] Error formatting sentiment message: {e}")
+            return "❌ Error formatting sentiment data"
 
     @require_access
     async def handle_whale(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
