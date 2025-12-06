@@ -349,6 +349,32 @@ class CoinGlassAPI:
             logger.warning(f"[COINGLASS] Whale positions failed: {e}")
             return {"success": False, "data": [], "error": "Whale positions temporarily unavailable"}
 
+    # Simplified aliases for whale command implementation
+    async def get_whale_alert(self) -> Dict[str, Any]:
+        """Get whale alerts from Hyperliquid - alias for get_whale_alert_hyperliquid"""
+        return await self.get_whale_alert_hyperliquid()
+
+    async def get_whale_positions(self) -> Dict[str, Any]:
+        """Get whale positions from Hyperliquid - alias for get_whale_position_hyperliquid without symbol"""
+        return await self.get_whale_position_hyperliquid()
+
+    async def get_whale_position_by_symbol(self, symbol: str = "BTC") -> Dict[str, Any]:
+        """Get whale positions by symbol - alias for get_whale_position_hyperliquid"""
+        return await self.get_whale_position_hyperliquid(symbol)
+
+    async def get_hyperliquid_position(self, symbol: str = "BTC") -> Dict[str, Any]:
+        """Get general position data from Hyperliquid - with fallback"""
+        try:
+            params = {"symbol": symbol}
+            result = await self._make_request("/api/hyperliquid/position", params)
+            if not result.get("success"):
+                logger.warning(f"[COINGLASS] Position data unavailable: {result.get('error')}")
+                return {"success": False, "data": [], "error": "Position data temporarily unavailable"}
+            return result
+        except Exception as e:
+            logger.warning(f"[COINGLASS] Position data failed: {e}")
+            return {"success": False, "data": [], "error": "Position data temporarily unavailable"}
+
     async def get_funding_rate_exchange_list(self, symbol: Optional[str] = None) -> Dict[str, Any]:
         """Get funding rates across exchanges"""
         try:
