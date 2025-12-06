@@ -990,21 +990,21 @@ class RawDataService:
         }
     
     def format_for_telegram(self, data: Dict[str, Any]) -> str:
-        """Format comprehensive data for Telegram display - EXACT format as required"""
+        """Format comprehensive data for Telegram display - styled, but same data content"""
         if "error" in data:
             return f"[ERROR] Error fetching data for {data['symbol']}: {data['error']}"
-        
+
         # Extract all data from the aggregated dict
         symbol = safe_get(data, 'symbol', 'UNKNOWN').upper()
         timestamp = safe_get(data, 'timestamp', '')
-        
+
         general_info = safe_get(data, 'general_info', {})
         price_change = safe_get(data, 'price_change', {})
-        
+
         # Extract individual values
         last_price = safe_float(safe_get(general_info, 'last_price'))
         mark_price = safe_float(safe_get(general_info, 'mark_price'))
-        
+
         pc1h = safe_float(safe_get(price_change, '1h'))
         pc4h = safe_float(safe_get(price_change, '4h'))
         pc24h = safe_float(safe_get(price_change, '24h'))
@@ -1012,209 +1012,218 @@ class RawDataService:
         lo24 = safe_float(safe_get(price_change, 'low_24h'))
         hi7d = safe_float(safe_get(price_change, 'high_7d'))
         lo7d = safe_float(safe_get(price_change, 'low_7d'))
-        
+
         oi = safe_get(data, 'open_interest', {})
         total_oi = safe_float(safe_get(oi, 'total_oi'))
         oi1h = safe_float(safe_get(oi, 'oi_1h'))
         oi24h = safe_float(safe_get(oi, 'oi_24h'))
         per_exchange = safe_get(oi, 'per_exchange', {})
-        
+
         volume = safe_get(data, 'volume', {})
         fut24h = safe_float(safe_get(volume, 'futures_24h'))
         perp24h = safe_float(safe_get(volume, 'perp_24h'))
         spot24h = safe_get(volume, 'spot_24h')
-        
+
         funding = safe_get(data, 'funding', {})
-        current_funding = safe_float(safe_get(funding, 'current_funding'))
+        current_funding = safe_get(funding, 'current_funding', None)
         next_funding = safe_get(funding, 'next_funding', 'N/A')
         funding_history = safe_get(funding, 'funding_history', [])
-        
+
         liquidations = safe_get(data, 'liquidations', {})
         liq_total = safe_float(safe_get(liquidations, 'total_24h'))
         liq_long = safe_float(safe_get(liquidations, 'long_liq'))
         liq_short = safe_float(safe_get(liquidations, 'short_liq'))
-        
+
         long_short = safe_get(data, 'long_short_ratio', {})
-        account_ratio = safe_float(safe_get(long_short, 'account_ratio_global'))
-        position_ratio = safe_float(safe_get(long_short, 'position_ratio_global'))
+        account_ratio = safe_get(long_short, 'account_ratio_global', None)
+        position_ratio = safe_get(long_short, 'position_ratio_global', None)
         ls_exchanges = safe_get(long_short, 'by_exchange', {})
-        ls_binance = safe_float(safe_get(ls_exchanges, 'Binance'))
-        ls_bybit = safe_float(safe_get(ls_exchanges, 'Bybit'))
-        ls_okx = safe_float(safe_get(ls_exchanges, 'OKX'))
-        
+        ls_binance = safe_get(ls_exchanges, 'Binance', None)
+        ls_bybit = safe_get(ls_exchanges, 'Bybit', None)
+        ls_okx = safe_get(ls_exchanges, 'OKX', None)
+
         # Taker flow
         taker_flow = safe_get(data, 'taker_flow', {})
         tf_5m = safe_get(taker_flow, '5m', {})
         tf_15m = safe_get(taker_flow, '15m', {})
         tf_1h = safe_get(taker_flow, '1h', {})
         tf_4h = safe_get(taker_flow, '4h', {})
-        
+
         # RSI - Get real RSI data from new endpoint
         rsi_1h_4h_1d = safe_get(data, 'rsi_1h_4h_1d', {})
-        rsi_1h = safe_get(rsi_1h_4h_1d, '1h')
-        rsi_4h = safe_get(rsi_1h_4h_1d, '4h')
-        rsi_1d = safe_get(rsi_1h_4h_1d, '1d')
-        
+        rsi_1h = safe_get(rsi_1h_4h_1d, '1h', None)
+        rsi_4h = safe_get(rsi_1h_4h_1d, '4h', None)
+        rsi_1d = safe_get(rsi_1h_4h_1d, '1d', None)
+
         # Levels
         levels = safe_get(data, 'cg_levels', {})
         support = safe_get(levels, 'support')
         resistance = safe_get(levels, 'resistance')
-        
-        # Format with proper units
+
+        # ===== UNITS & FORMAT HELPER =====
+
         oi_total_b = total_oi / 1e9 if total_oi > 0 else 0.0
         oi_binance_b = safe_float(safe_get(per_exchange, 'Binance')) / 1e9
         oi_bybit_b = safe_float(safe_get(per_exchange, 'Bybit')) / 1e9
         oi_okx_b = safe_float(safe_get(per_exchange, 'OKX')) / 1e9
         oi_others_b = safe_float(safe_get(per_exchange, 'Others')) / 1e9
-        
+
         fut24h_b = fut24h / 1e9 if fut24h > 0 else 0.0
         perp24h_b = perp24h / 1e9 if perp24h > 0 else 0.0
-        spot24h_b = spot24h / 1e9 if spot24h and spot24h > 0 else 0.0
-        
+        spot24h_b = spot24h / 1e9 if (spot24h is not None and spot24h > 0) else 0.0
+
         liq_total_m = liq_total / 1e6 if liq_total > 0 else 0.0
         liq_long_m = liq_long / 1e6 if liq_long > 0 else 0.0
         liq_short_m = liq_short / 1e6 if liq_short > 0 else 0.0
-        
-        # Helper function to format RSI values
+
         def format_rsi(value):
             return f"{value:.2f}" if value is not None else "N/A"
-        
-        # Helper function to format taker flow values
-        def format_taker_flow(tf_data):
-            buy = safe_get(tf_data, 'buy')
-            sell = safe_get(tf_data, 'sell')
-            net = safe_get(tf_data, 'net')
-            
+
+        def format_taker_flow(tf_data: Dict[str, Any]) -> str:
+            buy = safe_get(tf_data, 'buy', None)
+            sell = safe_get(tf_data, 'sell', None)
+            net = safe_get(tf_data, 'net', None)
             if buy is None or sell is None or net is None:
                 return "N/A"
             return f"Buy ${buy:.0f}M | Sell ${sell:.0f}M | Net ${net:+.0f}M"
-        
-        # Helper function to format funding history
-        def format_funding_history(history_data):
+
+        def format_funding_rate(value):
+            if value is None:
+                return "N/A"
+            try:
+                return f"{float(value):+.4f}%"
+            except Exception:
+                return "N/A"
+
+        def format_ls_ratio(value):
+            if value is None:
+                return "N/A"
+            try:
+                return f"{float(value):.2f}"
+            except Exception:
+                return "N/A"
+
+        def format_funding_history(history_data: List[Dict[str, Any]]) -> str:
             if not history_data:
                 return "No history available"
-            
-            history_lines = []
-            for i, entry in enumerate(history_data[:5], 1):  # Last 5 entries
-                if isinstance(entry, dict):
-                    # Try different field names for funding rate - look for common fields
-                    rate = (safe_float(safe_get(entry, "fundingRate")) or 
-                           safe_float(safe_get(entry, "rate")) or 
-                           safe_float(safe_get(entry, "avgFundingRate")) or
-                           safe_float(safe_get(entry, "funding_rate")) or 0.0)
-                    
-                    # Try to get timestamp - look for common timestamp fields
-                    timestamp = (safe_get(entry, "createTime") or 
-                               safe_get(entry, "timestamp") or 
-                               safe_get(entry, "time") or 
-                               safe_get(entry, "createTimeUtc") or "Unknown")
-                    
-                    # Format timestamp to be more readable
-                    if timestamp and timestamp != "Unknown":
-                        try:
-                            # If timestamp is a number, convert to readable format
-                            if isinstance(timestamp, (int, float)):
-                                from datetime import datetime
-                                dt = datetime.fromtimestamp(timestamp / 1000)  # Convert ms to seconds
-                                timestamp = dt.strftime("%Y-%m-%d %H:%M")
-                        except:
-                            pass  # Keep original timestamp if conversion fails
-                    
-                    history_lines.append(f"  {i}. {timestamp}: {rate:+.4f}%")
+
+            lines = []
+            for i, entry in enumerate(history_data[:5], 1):
+                if not isinstance(entry, dict):
+                    lines.append(f"  {i}. Invalid entry")
+                    continue
+
+                rate = (
+                    safe_float(safe_get(entry, "fundingRate")) or
+                    safe_float(safe_get(entry, "rate")) or
+                    safe_float(safe_get(entry, "avgFundingRate")) or
+                    safe_float(safe_get(entry, "funding_rate")) or
+                    0.0
+                )
+                ts = (
+                    safe_get(entry, "createTime") or
+                    safe_get(entry, "timestamp") or
+                    safe_get(entry, "time") or
+                    safe_get(entry, "createTimeUtc") or
+                    "Unknown"
+                )
+
+                # beautify timestamp if numeric
+                if isinstance(ts, (int, float)):
+                    try:
+                        dt = datetime.fromtimestamp(ts / 1000)
+                        ts_str = dt.strftime("%m-%d %H:%M")
+                    except Exception:
+                        ts_str = str(ts)
                 else:
-                    history_lines.append(f"  {i}. Invalid entry")
-            
-            return "\n".join(history_lines) if history_lines else "No valid history data"
-        
-        # Format support/resistance levels
+                    ts_str = str(ts)
+
+                lines.append(f"  {ts_str}: {rate:+.4f}%")
+            return "\n".join(lines) if lines else "No valid history data"
+
+        # support / resistance text
         if support is None or resistance is None:
-            levels_text = "Support/Resistance: N/A (not available for current plan)"
+            levels_text = "Support / Resistance unavailable"
         else:
-            support_str = ', '.join([f'${x:.2f}' for x in (support[:3] if isinstance(support, list) else [support])])
-            resistance_str = ', '.join([f'${x:.2f}' for x in (resistance[:3] if isinstance(resistance, list) else [resistance])])
+            if isinstance(support, list):
+                support_str = ', '.join([f"${x:.2f}" for x in support[:3]])
+            else:
+                support_str = f"${float(support):.2f}"
+
+            if isinstance(resistance, list):
+                resistance_str = ', '.join([f"${x:.2f}" for x in resistance[:3]])
+            else:
+                resistance_str = f"${float(resistance):.2f}"
+
             levels_text = f"Support : {support_str}\nResistance: {resistance_str}"
-        
-        # Format spot volume
+
         spot_volume_text = f"{spot24h_b:.2f}B" if spot24h is not None else "N/A"
-        
-        # Helper function to format funding rate
-        def format_funding_rate(value):
-            return f"{value:+.4f}%" if value is not None else "N/A"
-        
-        # Helper function to format long/short ratio
-        def format_ls_ratio(value):
-            return f"{value:.2f}" if value is not None else "N/A"
-        
-        # Format funding history properly
         funding_history_text = format_funding_history(funding_history)
-        
-        # Build EXACT format as required
-        message = f"""[RAW DATA - {symbol} - REAL PRICE MULTI-TF]
 
-Info Umum
-Symbol : {symbol}
-Timeframe : 1H
-Timestamp (UTC): {timestamp}
-Last Price: {last_price:.4f}
-Mark Price: {mark_price:.4f}
-Price Source: coinglass_futures
+        # ===== FINAL STYLED MESSAGE =====
 
-Price Change
-1H : {pc1h:+.2f}%
-4H : {pc4h:+.2f}%
-24H : {pc24h:+.2f}%
-High/Low 24H: {lo24:.4f}/{hi24:.4f}
-High/Low 7D : {lo7d:.4f}/{hi7d:.4f}
+        message = f"""📊 [RAW DATA - {symbol} - REAL PRICE MULTI-TF]
 
-Open Interest
-Total OI : {oi_total_b:.2f}B
-OI 1H : {oi1h:+.1f}%
-OI 24H : {oi24h:+.1f}%
+⏱ Timeframe: 1H
+🌐 Timestamp (UTC): {timestamp}
 
-OI per Exchange
-Binance : {oi_binance_b:.2f}B
-Bybit : {oi_bybit_b:.2f}B
-OKX : {oi_okx_b:.2f}B
-Others : {oi_others_b:.2f}B
+━━━━━━━━━━ PRICE ━━━━━━━━━━
+• Last Price : ${last_price:.4f}
+• Mark Price : ${mark_price:.4f}
+• Change 1H  : {pc1h:+.2f}%
+• Change 4H  : {pc4h:+.2f}%
+• Change 24H : {pc24h:+.2f}%
+• 24H Range  : {lo24:.4f} → {hi24:.4f}
+• 7D Range   : {lo7d:.4f} → {hi7d:.4f}
 
-Volume
-Futures 24H: {fut24h_b:.2f}B
-Perp 24H : {perp24h_b:.2f}B
-Spot 24H : {spot_volume_text}
+━━━━━━━━━━ OPEN INTEREST ━━━━━━━━━━
+• Total OI   : {oi_total_b:.2f}B
+• OI 1H      : {oi1h:+.1f}%
+• OI 24H     : {oi24h:+.1f}%
 
-Funding
-Current Funding: {format_funding_rate(current_funding)}
-Next Funding : {next_funding}
-Funding History:
+• Binance    : {oi_binance_b:.2f}B
+• Bybit      : {oi_bybit_b:.2f}B
+• OKX        : {oi_okx_b:.2f}B
+• Others     : {oi_others_b:.2f}B
+
+━━━━━━━━━━ VOLUME ━━━━━━━━━━
+• Futures 24H : {fut24h_b:.2f}B
+• Perp 24H    : {perp24h_b:.2f}B
+• Spot 24H    : {spot_volume_text}
+
+━━━━━━━━━━ FUNDING ━━━━━━━━━━
+• Current Funding : {format_funding_rate(current_funding)}
+• Next Funding    : {next_funding}
+• History (Last 5):
 {funding_history_text}
 
-Liquidations
-Total 24H : {liq_total_m:.2f}M
-Long Liq : {liq_long_m:.2f}M
-Short Liq : {liq_short_m:.2f}M
+━━━━━━━━━━ LIQUIDATIONS ━━━━━━━━━━
+• Total 24H : {liq_total_m:.2f}M
+• Long Liq  : {liq_long_m:.2f}M
+• Short Liq : {liq_short_m:.2f}M
 
-Long/Short Ratio
-Account Ratio (Global) : {format_ls_ratio(account_ratio)}
-Position Ratio (Global): {format_ls_ratio(position_ratio)}
-By Exchange:
-Binance: {format_ls_ratio(ls_binance)}
-Bybit : {format_ls_ratio(ls_bybit)}
-OKX : {format_ls_ratio(ls_okx)}
+━━━━━━━━━━ LONG / SHORT ━━━━━━━━━━
+• Account Ratio (Global)  : {format_ls_ratio(account_ratio)}
+• Position Ratio (Global) : {format_ls_ratio(position_ratio)}
+• By Exchange:
+   Binance : {format_ls_ratio(ls_binance)}
+   Bybit   : {format_ls_ratio(ls_bybit)}
+   OKX     : {format_ls_ratio(ls_okx)}
 
-Taker Flow Multi-Timeframe (CVD Proxy)
-5M: {format_taker_flow(tf_5m)}
-15M: {format_taker_flow(tf_15m)}
-1H: {format_taker_flow(tf_1h)}
-4H: {format_taker_flow(tf_4h)}
+━━━━━━━━━━ TAKER FLOW (CVD) ━━━━━━━━━━
+• 5M  → {format_taker_flow(tf_5m)}
+• 15M → {format_taker_flow(tf_15m)}
+• 1H  → {format_taker_flow(tf_1h)}
+• 4H  → {format_taker_flow(tf_4h)}
 
-RSI (1h/4h/1d)
-1H : {format_rsi(rsi_1h)}
-4H : {format_rsi(rsi_4h)}
-1D : {format_rsi(rsi_1d)}
+━━━━━━━━━━ RSI MULTI-TF ━━━━━━━━━━
+• 1H : {format_rsi(rsi_1h)}
+• 4H : {format_rsi(rsi_4h)}
+• 1D : {format_rsi(rsi_1d)}
 
-CG Levels
+━━━━━━━━━━ CG LEVELS ━━━━━━━━━━
 {levels_text}"""
-        
+
         return message
 
 
