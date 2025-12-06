@@ -1273,7 +1273,11 @@ class RawDataService:
                 size = safe_get(level, 1, None)
                 if price is None or size is None:
                     continue
-                formatted.append(f"[{price:.1f}, {size:.2f}]")
+                # Format price with appropriate decimal places
+                if price >= 1:
+                    formatted.append(f"[{price:.1f}, {size:.2f}]")
+                else:
+                    formatted.append(f"[{price:.4f}, {size:.2f}]")
             return ", ".join(formatted) if formatted else "N/A"
 
         # ====== Extract root fields ======
@@ -1426,15 +1430,28 @@ class RawDataService:
         lines.append("")
 
         def format_tf_block(tf_data: Dict[str, Any]) -> str:
-            buy = safe_float(safe_get(tf_data, "buy_volume"))
-            sell = safe_float(safe_get(tf_data, "sell_volume"))
-            net = buy - sell
-            if buy == 0 and sell == 0:
+            # Extract buy/sell values - they might be None or missing
+            buy = safe_get(tf_data, "buy", None)
+            sell = safe_get(tf_data, "sell", None)
+            
+            # If values are None or missing, return N/A
+            if buy is None or sell is None:
                 return "Buy $0M | Sell $0M | Net $0M"
+            
+            # Convert to float and calculate net
+            buy_float = safe_float(buy)
+            sell_float = safe_float(sell)
+            net = buy_float - sell_float
+            
+            # If both are zero, return zero values
+            if buy_float == 0 and sell_float == 0:
+                return "Buy $0M | Sell $0M | Net $0M"
+            
+            # Values are already in millions, no need to divide again
             return (
-                f"Buy ${buy/1e6:.0f}M | "
-                f"Sell ${sell/1e6:.0f}M | "
-                f"Net ${net/1e6:+.0f}M"
+                f"Buy ${buy_float:.0f}M | "
+                f"Sell ${sell_float:.0f}M | "
+                f"Net ${net:+.0f}M"
             )
 
         lines.append("Taker Flow Multi-Timeframe (CVD Proxy)")
