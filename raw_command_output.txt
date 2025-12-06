@@ -1,0 +1,61 @@
+📊 [RAW DATA - BTC - REAL PRICE MULTI-TF]
+
+⏱ Timeframe: 1H
+🌐 Timestamp (UTC): 2025-12-06T02:58:38.505099+00:00
+
+━━━━━━━━━━ PRICE ━━━━━━━━━━
+• Last Price : $89297.0000
+• Mark Price : $89297.0000
+• Change 1H  : +0.08%
+• Change 4H  : +0.05%
+• Change 24H : -3.42%
+• 24H Range  : 87511.0600 → 91082.9400
+• 7D Range   : 84832.1500 → 93761.8500
+
+━━━━━━━━━━ OPEN INTEREST ━━━━━━━━━━
+• Total OI   : 19.73B
+• OI 1H      : +0.0%
+• OI 24H     : +0.0%
+
+• Binance    : 7.89B
+• Bybit      : 4.93B
+• OKX        : 2.96B
+• Others     : 3.95B
+
+━━━━━━━━━━ VOLUME ━━━━━━━━━━
+• Futures 24H : 38.99B
+• Perp 24H    : 38.99B
+• Spot 24H    : N/A
+
+━━━━━━━━━━ FUNDING ━━━━━━━━━━
+• Current Funding : +0.7183%
+• Next Funding    : N/A
+• History (Last 5):
+No history available
+
+━━━━━━━━━━ LIQUIDATIONS ━━━━━━━━━━
+• Total 24H : 0.35M
+• Long Liq  : 0.14M
+• Short Liq : 0.20M
+
+━━━━━━━━━━ LONG / SHORT ━━━━━━━━━━
+• Account Ratio (Global)  : 1.91
+• Position Ratio (Global) : N/A
+• By Exchange:
+   Binance : 1.91
+   Bybit   : N/A
+   OKX     : N/A
+
+━━━━━━━━━━ TAKER FLOW (CVD) ━━━━━━━━━━
+• 5M  → Buy $1369M | Sell $1175M | Net $+193M
+• 15M → Buy $8112M | Sell $8242M | Net $-130M
+• 1H  → Buy $35003M | Sell $34837M | Net $+166M
+• 4H  → Buy $105399M | Sell $108173M | Net $-2773M
+
+━━━━━━━━━━ RSI MULTI-TF ━━━━━━━━━━
+• 1H : 36.59
+• 4H : 27.88
+• 1D : 44.00
+
+━━━━━━━━━━ CG LEVELS ━━━━━━━━━━
+Support / Resistance unavailable

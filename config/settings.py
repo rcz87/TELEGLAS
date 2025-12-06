@@ -38,7 +38,7 @@ class Settings:
     
     # Alert Thresholds
     LIQUIDATION_THRESHOLD_USD: float = float(os.getenv("LIQUIDATION_THRESHOLD_USD", "1000000"))
-    WHALE_TRANSACTION_THRESHOLD_USD: float = float(os.getenv("WHALE_TRANSACTION_THRESHOLD_USD", "500000"))
+    WHALE_TRANSACTION_THRESHOLD_USD: float = float(os.getenv("WHALE_TRANSACTION_THRESHOLD_USD", "100000"))
     EXTREME_FUNDING_RATE: float = float(os.getenv("EXTREME_FUNDING_RATE", "0.01"))
     
     # Polling Intervals

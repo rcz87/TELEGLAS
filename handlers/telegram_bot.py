@@ -221,7 +221,7 @@ class TelegramBot:
             "/alerts - View your alert subscriptions\n\n"
             "🚨 *Real-time Monitoring Active:*\n"
             "• Massive Liquidations (>$1M)\n"
-            "• Whale Movements (>$500K)\n"
+            f"• Whale Movements (>${settings.WHALE_TRANSACTION_THRESHOLD_USD:,.0f})\n"
             "• Extreme Funding Rates\n\n"
             "⚡ Powered by CoinGlass API v4"
         )
@@ -256,7 +256,7 @@ class TelegramBot:
             "📝 *Note:*\n"
             "• All alerts are filtered by minimum thresholds\n"
             "• Liquidations: $1M+\n"
-            "• Whale transactions: $500K+\n"
+            f"• Whale transactions: ${settings.WHALE_TRANSACTION_THRESHOLD_USD:,.0f}+\n"
             "• Funding rates: ±1%\n\n"
             "⚡ Data updates every 5-30 seconds"
         )
@@ -369,7 +369,7 @@ class TelegramBot:
             await update.message.reply_text(
                 self.sanitize("🐋 *Recent Whale Activity*\n\n"
                 "No significant whale transactions detected in the last 24 hours.\n"
-                "Whale threshold: $500,000+"),
+                f"Whale threshold: ${settings.WHALE_TRANSACTION_THRESHOLD_USD:,.0f}+"),
                 parse_mode="Markdown",
             )
             return
@@ -390,7 +390,7 @@ class TelegramBot:
             )
 
         message += f"📋 Showing latest {len(whale_activity)} transactions\n"
-        message += "💸 Minimum: $500,000\n"
+        message += f"💸 Minimum: ${settings.WHALE_TRANSACTION_THRESHOLD_USD:,.0f}\n"
         message += "🏦 Source: Hyperliquid"
 
         await update.message.reply_text(message, parse_mode="Markdown")
@@ -463,7 +463,7 @@ class TelegramBot:
                 self.sanitize(f"✅ *Subscription Successful*\n\n"
                 f"You're now subscribed to all alerts for `{symbol}`:\n"
                 f"• 🚨 Massive Liquidations (>$1M)\n"
-                f"• 🐋 Whale Transactions (>$500K)\n"
+                f"• 🐋 Whale Transactions (>${settings.WHALE_TRANSACTION_THRESHOLD_USD:,.0f})\n"
                 f"• 💰 Extreme Funding Rates (±1%)\n\n"
                 f"Use /alerts to manage your subscriptions."),
                 parse_mode="Markdown",
@@ -637,7 +637,7 @@ class TelegramBot:
             await update.message.reply_text(
                 self.sanitize("🐋 *Whale alerts already enabled*\n\n"
                 "Whale monitoring is currently running and will automatically\n"
-                "alert you to significant whale transactions (>$500K)."),
+                f"alert you to significant whale transactions (>${settings.WHALE_TRANSACTION_THRESHOLD_USD:,.0f})."),
                 parse_mode="Markdown",
             )
         else:
