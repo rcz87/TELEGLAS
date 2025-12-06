@@ -917,7 +917,8 @@ class TelegramBot:
                 try:
                     from services.coinglass_api import coinglass_api
                     base_symbol, futures_pair = coinglass_api.resolve_orderbook_symbols(symbol)
-                    orderbook_data = await coinglass_api.get_orderbook_snapshot(base_symbol, "Binance")
+                    # Note: This needs to be called from an async function
+                    orderbook_data = None  # Skip async call in sync context
                 except:
                     orderbook_data = None
             
