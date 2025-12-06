@@ -702,6 +702,147 @@ class WhaleWatcher:
             logger.error(f"Error getting whale positions: {e}")
             return []
 
+    async def get_enhanced_whale_radar_data(self, user_threshold: float = None) -> Dict[str, Any]:
+        """Get enhanced whale radar data with dynamic thresholds and active symbols"""
+        try:
+            # Determine thresholds based on symbol type and user input
+            btc_eth_threshold = user_threshold if user_threshold else 500_000
+            altcoin_threshold = user_threshold if user_threshold else 100_000
+            
+            # Get fresh whale data from API with no limit to process ALL transactions
+            whale_data = await self._get_fresh_whale_activity(symbol=None, limit=1000)
+            
+            if not whale_data:
+                logger.warning("[ENHANCED_RADAR] No whale data available")
+                return {
+                    "symbols_above_threshold": [], 
+                    "symbols_below_threshold": [],
+                    "active_whale_symbols": [],
+                    "total_alerts": 0
+                }
+
+            # Group by symbol and calculate statistics
+            symbol_stats = {}
+            total_alerts = len(whale_data)
+            
+            for tx in whale_data:
+                symbol = tx["symbol"]
+                if symbol not in symbol_stats:
+                    symbol_stats[symbol] = {
+                        "buy_count": 0,
+                        "sell_count": 0,
+                        "buy_usd": 0.0,
+                        "sell_usd": 0.0,
+                        "total_usd": 0.0,
+                        "net_usd": 0.0,
+                        "transactions": [],
+                        "buy_amounts": [],
+                        "sell_amounts": []
+                    }
+
+                # Update statistics
+                amount_usd = tx["amount_usd"]
+                if tx["side"] == "buy":
+                    symbol_stats[symbol]["buy_count"] += 1
+                    symbol_stats[symbol]["buy_usd"] += amount_usd
+                    symbol_stats[symbol]["buy_amounts"].append(amount_usd)
+                else:
+                    symbol_stats[symbol]["sell_count"] += 1
+                    symbol_stats[symbol]["sell_usd"] += amount_usd
+                    symbol_stats[symbol]["sell_amounts"].append(amount_usd)
+
+                symbol_stats[symbol]["total_usd"] += amount_usd
+                symbol_stats[symbol]["net_usd"] = symbol_stats[symbol]["buy_usd"] - symbol_stats[symbol]["sell_usd"]
+                symbol_stats[symbol]["transactions"].append(tx)
+
+            # Separate symbols above and below threshold
+            symbols_above_threshold = []
+            symbols_below_threshold = []
+            active_whale_symbols = []
+
+            for symbol, stats in symbol_stats.items():
+                total_usd = stats["total_usd"]
+                net_usd = stats["net_usd"]
+                buy_count = stats["buy_count"]
+                sell_count = stats["sell_count"]
+                
+                # Determine threshold based on symbol type
+                if symbol in ["BTC", "ETH"]:
+                    threshold = btc_eth_threshold
+                else:
+                    threshold = altcoin_threshold
+                
+                # Determine if significant based on total activity
+                is_above_threshold = total_usd >= threshold
+                has_activity = buy_count > 0 or sell_count > 0
+                
+                # Sort buy and sell amounts (descending)
+                stats["buy_amounts"].sort(reverse=True)
+                stats["sell_amounts"].sort(reverse=True)
+                
+                # Format amounts for display
+                buy_amounts_formatted = [f"${amount:,.0f}" for amount in stats["buy_amounts"][:3]]
+                sell_amounts_formatted = [f"${amount:,.0f}" for amount in stats["sell_amounts"][:3]]
+                
+                radar_item = {
+                    "symbol": symbol,
+                    "buy_count": buy_count,
+                    "sell_count": sell_count,
+                    "buy_usd": stats["buy_usd"],
+                    "sell_usd": stats["sell_usd"],
+                    "total_usd": total_usd,
+                    "net_usd": net_usd,
+                    "dominant_side": "BUY" if net_usd > 0 else "SELL",
+                }
+                
+                # Active whale symbols data
+                active_symbol_data = {
+                    "symbol": symbol,
+                    "total_trades": buy_count + sell_count,
+                    "buy_count": buy_count,
+                    "sell_count": sell_count,
+                    "buy_amounts": buy_amounts_formatted,
+                    "sell_amounts": sell_amounts_formatted,
+                }
+
+                if is_above_threshold:
+                    symbols_above_threshold.append(radar_item)
+                else:
+                    symbols_below_threshold.append(radar_item)
+                
+                # Add to active symbols if there's any activity
+                if has_activity:
+                    active_whale_symbols.append(active_symbol_data)
+
+            # Sort by total USD (descending)
+            symbols_above_threshold.sort(key=lambda x: x["total_usd"], reverse=True)
+            symbols_below_threshold.sort(key=lambda x: x["total_usd"], reverse=True)
+            active_whale_symbols.sort(key=lambda x: x["total_trades"], reverse=True)
+
+            # Comprehensive logging
+            logger.info(
+                f"[WHALE] Parsed {total_alerts} alerts, "
+                f"{len(symbols_above_threshold)} symbols above threshold, "
+                f"{len(symbols_below_threshold)} symbols below threshold, "
+                f"{len(active_whale_symbols)} symbols detected with whale activity."
+            )
+
+            return {
+                "symbols_above_threshold": symbols_above_threshold,
+                "symbols_below_threshold": symbols_below_threshold,
+                "active_whale_symbols": active_whale_symbols,
+                "total_alerts": total_alerts,
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting enhanced whale radar data: {e}")
+            return {
+                "symbols_above_threshold": [], 
+                "symbols_below_threshold": [],
+                "active_whale_symbols": [],
+                "total_alerts": 0
+            }
+
 
 # Global whale watcher instance
 whale_watcher = WhaleWatcher()
