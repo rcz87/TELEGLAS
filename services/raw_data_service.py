@@ -1226,6 +1226,250 @@ class RawDataService:
 
         return message
 
+    def format_standard_raw_message_for_telegram(self, data: Dict[str, Any]) -> str:
+        """
+        Format comprehensive CoinGlass data into a standardized raw message for Telegram.
+        HARUS tahan banting:
+        - Kalau sebagian data None / kosong → tetap kirim pesan.
+        - Angka 0.0 yang hanya placeholder → di-render sebagai N/A di output.
+        """
+        from services.coinglass_api import safe_float, safe_get  # ensure helpers
+
+        def fmt_pct(v: float) -> str:
+            # v dalam bentuk +0.33 / -4.40
+            return f"{v:+.2f}%" if v is not None else "N/A"
+
+        def fmt_price(v: float) -> str:
+            return f"{v:.4f}" if v is not None and v != 0.0 else "0.0000"
+
+        def fmt_billion(v: float) -> str:
+            if v is None or v <= 0:
+                return "0.00B"
+            return f"{v / 1e9:.2f}B"
+
+        def fmt_million(v: float) -> str:
+            if v is None or v <= 0:
+                return "0.00M"
+            return f"{v / 1e6:.2f}M"
+
+        def fmt_optional_number(v: float, suffix: str = "") -> str:
+            if v is None:
+                return "N/A"
+            return f"{v:.2f}{suffix}"
+
+        def fmt_rsi_core(v: float) -> str:
+            # Untuk RSI 1H/4H/1D (data benar-benar dari endpoint RSI)
+            if v is None:
+                return "N/A"
+            return f"{v:.2f}"
+
+        def fmt_orderbook_side(side: list) -> str:
+            if not side:
+                return "N/A"
+            # side = [[price, size], ...]
+            formatted = []
+            for level in side[:5]:
+                price = safe_get(level, 0, None)
+                size = safe_get(level, 1, None)
+                if price is None or size is None:
+                    continue
+                formatted.append(f"[{price:.1f}, {size:.2f}]")
+            return ", ".join(formatted) if formatted else "N/A"
+
+        # ====== Extract root fields ======
+        symbol = safe_get(data, "symbol", "UNKNOWN").upper()
+        timestamp = safe_get(data, "timestamp", "")
+
+        general_info = safe_get(data, "general_info", {})
+        price_change = safe_get(data, "price_change", {})
+        oi = safe_get(data, "open_interest", {})
+        volume = safe_get(data, "volume", {})
+        funding = safe_get(data, "funding", {})
+        liquidations = safe_get(data, "liquidations", {})
+        long_short = safe_get(data, "long_short_ratio", {})
+        taker_flow = safe_get(data, "taker_flow", {})
+        rsi_1h_4h_1d = safe_get(data, "rsi_1h_4h_1d", {})
+        rsi_multi_tf = safe_get(data, "rsi_multi_tf", {})
+        cg_levels = safe_get(data, "cg_levels", {})
+        orderbook = safe_get(data, "orderbook", {})
+
+        # ====== General info ======
+        last_price = safe_float(safe_get(general_info, "last_price"))
+        mark_price = safe_float(safe_get(general_info, "mark_price"))
+
+        pc1h = safe_float(safe_get(price_change, "1h"))
+        pc4h = safe_float(safe_get(price_change, "4h"))
+        pc24h = safe_float(safe_get(price_change, "24h"))
+        hi24 = safe_float(safe_get(price_change, "high_24h"))
+        lo24 = safe_float(safe_get(price_change, "low_24h"))
+        hi7d = safe_float(safe_get(price_change, "high_7d"))
+        lo7d = safe_float(safe_get(price_change, "low_7d"))
+
+        total_oi = safe_float(safe_get(oi, "total_oi"))
+        oi_1h = safe_float(safe_get(oi, "oi_1h"))
+        oi_24h = safe_float(safe_get(oi, "oi_24h"))
+        per_exchange = safe_get(oi, "per_exchange", {})
+
+        fut24h = safe_float(safe_get(volume, "futures_24h"))
+        perp24h = safe_float(safe_get(volume, "perp_24h"))
+        spot24h = safe_get(volume, "spot_24h", None)
+
+        current_funding = safe_get(funding, "current_funding", None)
+        next_funding = safe_get(funding, "next_funding", "N/A")
+        funding_history = safe_get(funding, "funding_history", [])
+
+        liq_total = safe_float(safe_get(liquidations, "total_24h"))
+        liq_long = safe_float(safe_get(liquidations, "long_liq"))
+        liq_short = safe_float(safe_get(liquidations, "short_liq"))
+
+        account_ratio = safe_get(long_short, "account_ratio_global", None)
+        position_ratio = safe_get(long_short, "position_ratio_global", None)
+        ls_exchanges = safe_get(long_short, "by_exchange", {})
+        ls_binance = safe_get(ls_exchanges, "Binance", None)
+        ls_bybit = safe_get(ls_exchanges, "Bybit", None)
+        ls_okx = safe_get(ls_exchanges, "OKX", None)
+
+        tf_5m = safe_get(taker_flow, "5m", {})
+        tf_15m = safe_get(taker_flow, "15m", {})
+        tf_1h = safe_get(taker_flow, "1h", {})
+        tf_4h = safe_get(taker_flow, "4h", {})
+
+        rsi_1h = safe_get(rsi_1h_4h_1d, "1h", None)
+        rsi_4h = safe_get(rsi_1h_4h_1d, "4h", None)
+        rsi_1d = safe_get(rsi_1h_4h_1d, "1d", None)
+
+        support = safe_get(cg_levels, "support")
+        resistance = safe_get(cg_levels, "resistance")
+
+        ob_timestamp = safe_get(orderbook, "snapshot_timestamp")
+        ob_bids = safe_get(orderbook, "top_bids", [])
+        ob_asks = safe_get(orderbook, "top_asks", [])
+
+        # ====== Build lines ======
+        lines = []
+
+        lines.append(f"[RAW DATA - {symbol} - REAL PRICE MULTI-TF]")
+        lines.append("")
+        lines.append("Info Umum")
+        lines.append(f"Symbol : {symbol}")
+        lines.append("Timeframe : 1H")
+        lines.append(f"Timestamp (UTC): {timestamp}")
+        lines.append(f"Last Price: {fmt_price(last_price)}")
+        lines.append(f"Mark Price: {fmt_price(mark_price)}")
+        lines.append("Price Source: coinglass_futures")
+        lines.append("")
+        lines.append("Price Change")
+        lines.append(f"1H : {fmt_pct(pc1h)}")
+        lines.append(f"4H : {fmt_pct(pc4h)}")
+        lines.append(f"24H : {fmt_pct(pc24h)}")
+        lines.append(
+            f"High/Low 24H: {fmt_price(hi24)}/{fmt_price(lo24)}"
+        )
+        lines.append(
+            f"High/Low 7D : {fmt_price(hi7d)}/{fmt_price(lo7d)}"
+        )
+        lines.append("")
+
+        lines.append("Open Interest")
+        lines.append(f"Total OI : {fmt_billion(total_oi)}")
+        lines.append(f"OI 1H : {fmt_optional_number(oi_1h, '%')}")
+        lines.append(f"OI 24H : {fmt_optional_number(oi_24h, '%')}")
+        lines.append("")
+
+        lines.append("OI per Exchange")
+        lines.append(f"Binance : {fmt_billion(safe_float(safe_get(per_exchange, 'Binance')))}")
+        lines.append(f"Bybit   : {fmt_billion(safe_float(safe_get(per_exchange, 'Bybit')))}")
+        lines.append(f"OKX     : {fmt_billion(safe_float(safe_get(per_exchange, 'OKX')))}")
+        lines.append(f"Others  : {fmt_billion(safe_float(safe_get(per_exchange, 'Others')))}")
+        lines.append("")
+
+        lines.append("Volume")
+        lines.append(f"Futures 24H: {fmt_billion(fut24h)}")
+        lines.append(f"Perp 24H   : {fmt_billion(perp24h)}")
+        lines.append(
+            f"Spot 24H   : {fmt_billion(spot24h) if isinstance(spot24h, (int, float)) and spot24h > 0 else 'N/A'}"
+        )
+        lines.append("")
+
+        lines.append("Funding")
+        if current_funding is None:
+            lines.append("Current Funding: N/A")
+        else:
+            lines.append(f"Current Funding: {current_funding:.4f}%")
+        lines.append(f"Next Funding   : {next_funding if next_funding else 'N/A'}")
+
+        lines.append("Funding History:")
+        if funding_history:
+            # Tampilkan max 3 item
+            for entry in funding_history[:3]:
+                ts = safe_get(entry, "time", "")
+                rate = safe_get(entry, "rate", None)
+                rate_str = f"{rate:.4f}%" if rate is not None else "N/A"
+                lines.append(f"- {ts}: {rate_str}")
+        else:
+            lines.append("No history available")
+        lines.append("")
+
+        lines.append("Liquidations")
+        lines.append(f"Total 24H : {fmt_million(liq_total)}")
+        lines.append(f"Long Liq  : {fmt_million(liq_long)}")
+        lines.append(f"Short Liq : {fmt_million(liq_short)}")
+        lines.append("")
+
+        lines.append("Long/Short Ratio")
+        lines.append(f"Account Ratio (Global) : {fmt_optional_number(account_ratio)}")
+        lines.append(f"Position Ratio (Global): {fmt_optional_number(position_ratio)}")
+        lines.append("By Exchange:")
+        lines.append(f"Binance: {fmt_optional_number(ls_binance)}")
+        lines.append(f"Bybit : {fmt_optional_number(ls_bybit)}")
+        lines.append(f"OKX   : {fmt_optional_number(ls_okx)}")
+        lines.append("")
+
+        def format_tf_block(tf_data: Dict[str, Any]) -> str:
+            buy = safe_float(safe_get(tf_data, "buy_volume"))
+            sell = safe_float(safe_get(tf_data, "sell_volume"))
+            net = buy - sell
+            if buy == 0 and sell == 0:
+                return "Buy $0M | Sell $0M | Net $0M"
+            return (
+                f"Buy ${buy/1e6:.0f}M | "
+                f"Sell ${sell/1e6:.0f}M | "
+                f"Net ${net/1e6:+.0f}M"
+            )
+
+        lines.append("Taker Flow Multi-Timeframe (CVD Proxy)")
+        lines.append(f"5M : {format_tf_block(tf_5m)}")
+        lines.append(f"15M: {format_tf_block(tf_15m)}")
+        lines.append(f"1H : {format_tf_block(tf_1h)}")
+        lines.append(f"4H : {format_tf_block(tf_4h)}")
+        lines.append("")
+
+        lines.append("RSI (1h/4h/1d)")
+        lines.append(f"1H : {fmt_rsi_core(rsi_1h)}")
+        lines.append(f"4H : {fmt_rsi_core(rsi_4h)}")
+        lines.append(f"1D : {fmt_rsi_core(rsi_1d)}")
+        lines.append("")
+
+        lines.append("CG Levels")
+        if support is None and resistance is None:
+            lines.append("Support/Resistance: N/A (not available for current plan)")
+        else:
+            lines.append(f"Support : {support}")
+            lines.append(f"Resistance : {resistance}")
+        lines.append("")
+
+        lines.append("Orderbook Snapshot")
+        if ob_timestamp is None or (not ob_bids and not ob_asks):
+            lines.append("Timestamp: N/A")
+            lines.append("Top 5 Bids: N/A")
+            lines.append("Top 5 Asks: N/A")
+        else:
+            lines.append(f"Timestamp: {ob_timestamp}")
+            lines.append(f"Top 5 Bids: {fmt_orderbook_side(ob_bids)}")
+            lines.append(f"Top 5 Asks: {fmt_orderbook_side(ob_asks)}")
+
+        return "\n".join(lines)
+
 
 # Global instance
 raw_data_service = RawDataService()

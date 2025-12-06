@@ -743,8 +743,8 @@ class TelegramBot:
                 logger.info(f"[/raw] Symbol '{args_raw}' not supported by CoinGlass")
                 return
 
-            # Format to standardized layout
-            formatted_message = self._format_standardized_raw_output(comprehensive_data)
+            # Use the new standardized formatter from RawDataService
+            formatted_message = raw_data_service.format_standard_raw_message_for_telegram(comprehensive_data)
 
             # Send comprehensive data as plain text to avoid Markdown parsing errors
             await update.message.reply_text(
