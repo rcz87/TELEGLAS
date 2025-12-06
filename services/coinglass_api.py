@@ -515,6 +515,51 @@ class CoinGlassAPI:
             logger.error(f"[COINGLASS] Failed endpoint /api/futures/supported-coins reason: {e}")
             return {"success": False, "data": []}
 
+    async def get_supported_futures_coins(self) -> Dict[str, Any]:
+        """
+        Call /api/futures/supported-coins, cache the result in memory,
+        and return parsed JSON. Do NOT hardcode API key here.
+        Use the same internal _make_request utility and error handling as other endpoints.
+        """
+        try:
+            current_time = time.time()
+            
+            # Check cache first (15 minutes TTL)
+            if (self._symbol_cache.get('futures_coins') and 
+                current_time - self._symbol_cache.get('futures_coins_timestamp', 0) < 900):  # 15 minutes
+                
+                cached_data = self._symbol_cache['futures_coins']
+                logger.debug(f"[SYMBOL_RESOLVER] Using cached futures coins data ({len(cached_data.get('data', []))} coins)")
+                return cached_data
+            
+            # Cache miss or expired, fetch fresh data
+            logger.info("[SYMBOL_RESOLVER] Fetching fresh supported futures coins from CoinGlass")
+            result = await self._make_request("/api/futures/supported-coins")
+            
+            if not result.get("success"):
+                logger.error(f"[SYMBOL_RESOLVER] Failed to fetch supported futures coins: {result.get('error')}")
+                return {"success": False, "data": []}
+            
+            data = result.get("data", [])
+            if not isinstance(data, list):
+                logger.warning(f"[SYMBOL_RESOLVER] Unexpected data format for supported futures coins: {type(data)}")
+                return {"success": False, "data": []}
+            
+            # Update cache
+            self._symbol_cache['futures_coins'] = result
+            self._symbol_cache['futures_coins_timestamp'] = current_time
+            
+            logger.info(f"[SYMBOL_RESOLVER] Cached {len(data)} supported futures coins from CoinGlass")
+            return result
+            
+        except Exception as e:
+            logger.error(f"[SYMBOL_RESOLVER] Error fetching supported futures coins: {e}")
+            # Return cached data if available, even if expired
+            if self._symbol_cache.get('futures_coins'):
+                logger.warning("[SYMBOL_RESOLVER] Using expired cache due to API error")
+                return self._symbol_cache['futures_coins']
+            return {"success": False, "data": []}
+
     async def get_supported_exchange_pairs(self) -> Dict[str, Any]:
         """Get supported exchanges and their trading pairs"""
         try:
@@ -1179,13 +1224,13 @@ class CoinGlassAPI:
 
     async def resolve_symbol(self, raw_symbol: str) -> Optional[str]:
         """
-        Normalize and resolve user input symbol to a CoinGlass symbol.
+        Normalize and resolve user input symbol to a CoinGlass symbol using futures/supported-coins endpoint.
         Steps:
         - strip spaces, upper-case
         - remove common suffixes: 'USDT', 'USD', 'USDC', 'PERP', '-PERP', '_PERP', '3L', '3S'
-        - call CoinGlass coin list or coins-markets endpoint once and cache result in-memory
+        - call /api/futures/supported-coins endpoint and cache result in-memory (15 min TTL)
         - match by: exact symbol, startswith / equals base asset
-        - return the canonical symbol used by other endpoints (e.g. 'SOL', 'BTC', 'HYPE')
+        - return canonical symbol used by other endpoints (e.g. 'SOL', 'BTC', 'HYPE')
         - on failure, return None (do NOT raise)
         """
         try:
@@ -1202,12 +1247,42 @@ class CoinGlassAPI:
                     normalized = normalized[:-len(suffix)]
                     break
             
-            # Check cache first
+            # Check if we have futures_coins cache first
             current_time = time.time()
-            if (self._symbol_cache.get('symbols') and 
-                current_time - self._symbol_cache.get('timestamp', 0) < self._cache_ttl):
+            if (self._symbol_cache.get('futures_coins') and 
+                current_time - self._symbol_cache.get('futures_coins_timestamp', 0) < 900):  # 15 minutes TTL
                 
-                supported_symbols = self._symbol_cache['symbols']
+                cached_data = self._symbol_cache['futures_coins']
+                supported_symbols = set()
+                
+                # Extract symbols from cached futures_coins data
+                data = cached_data.get("data", [])
+                if isinstance(data, list):
+                    for item in data:
+                        if isinstance(item, str):
+                            # Data is directly a string symbol like "BTC", "ETH", "SOL"
+                            symbol = str(item).upper().strip()
+                            if symbol:
+                                supported_symbols.add(symbol)
+                        elif isinstance(item, dict):
+                            # Fallback for dict format (in case API changes)
+                            # Try different field names for symbol
+                            symbol = None
+                            for field in ['symbol', 'pair', 'name', 'coin']:
+                                symbol_candidate = str(item.get(field, "")).upper().strip()
+                                if symbol_candidate:
+                                    # Extract base symbol if it's a pair
+                                    if symbol_candidate.endswith('USDT'):
+                                        symbol = symbol_candidate[:-4]  # Remove USDT suffix
+                                    elif symbol_candidate.endswith('USD'):
+                                        symbol = symbol_candidate[:-3]  # Remove USD suffix
+                                    else:
+                                        symbol = symbol_candidate
+                                    break
+                            
+                            if symbol:
+                                supported_symbols.add(symbol)
+                
                 # Try exact match first
                 if normalized in supported_symbols:
                     return normalized
@@ -1219,33 +1294,44 @@ class CoinGlassAPI:
                 
                 return None
             
-            # Cache miss or expired, fetch fresh data
+            # Cache miss or expired, fetch fresh futures_coins data
             async with self:
-                result = await self.get_futures_coins_markets()
+                result = await self.get_supported_futures_coins()
                 
                 if not result.get("success"):
-                    logger.warning(f"[SYMBOL_RESOLVER] Failed to fetch supported symbols: {result.get('error')}")
+                    logger.warning(f"[SYMBOL_RESOLVER] Failed to fetch supported futures coins: {result.get('error')}")
                     return None
                 
                 data = result.get("data", [])
                 if not isinstance(data, list):
                     return None
                 
-                # Extract unique symbols
+                # Extract unique symbols from futures_coins data
                 supported_symbols = set()
                 for item in data:
                     if isinstance(item, dict):
-                        symbol = str(item.get("symbol", "")).upper().strip()
+                        # Try different field names for symbol
+                        symbol = None
+                        for field in ['symbol', 'pair', 'name', 'coin']:
+                            symbol_candidate = str(item.get(field, "")).upper().strip()
+                            if symbol_candidate:
+                                # Extract base symbol if it's a pair
+                                if symbol_candidate.endswith('USDT'):
+                                    symbol = symbol_candidate[:-4]  # Remove USDT suffix
+                                elif symbol_candidate.endswith('USD'):
+                                    symbol = symbol_candidate[:-3]  # Remove USD suffix
+                                else:
+                                    symbol = symbol_candidate
+                                break
+                        
                         if symbol:
                             supported_symbols.add(symbol)
                 
                 # Update cache
-                self._symbol_cache = {
-                    'symbols': supported_symbols,
-                    'timestamp': current_time
-                }
+                self._symbol_cache['supported_futures_symbols'] = supported_symbols
+                self._symbol_cache['supported_futures_timestamp'] = current_time
                 
-                logger.info(f"[SYMBOL_RESOLVER] Cached {len(supported_symbols)} supported symbols")
+                logger.info(f"[SYMBOL_RESOLVER] Cached {len(supported_symbols)} supported futures symbols from CoinGlass")
                 
                 # Try exact match first
                 if normalized in supported_symbols:
