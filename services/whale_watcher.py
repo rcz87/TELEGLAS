@@ -48,9 +48,40 @@ class WhaleWatcher:
         self.last_alert_time = {}
         self.debounce_minutes = 5  # Maximum 1 alert per symbol per 5 minutes
         
+        # Performance caching
+        self._cache = {}
+        self._cache_timestamps = {}
+        self.cache_duration = 15  # 15 seconds cache for API responses
+        
         # Connection safety
         self.semaphore = asyncio.Semaphore(3)  # Limit concurrent API calls
         self.running = False
+
+    def _is_cache_valid(self, cache_key: str) -> bool:
+        """Check if cache entry is still valid"""
+        if cache_key not in self._cache_timestamps:
+            return False
+        
+        cache_time = self._cache_timestamps[cache_key]
+        current_time = datetime.utcnow()
+        
+        return (current_time - cache_time).total_seconds() < self.cache_duration
+
+    def _get_from_cache(self, cache_key: str) -> Optional[Any]:
+        """Get data from cache if valid"""
+        if self._is_cache_valid(cache_key):
+            return self._cache.get(cache_key)
+        return None
+
+    def _set_cache(self, cache_key: str, data: Any) -> None:
+        """Set data in cache with timestamp"""
+        self._cache[cache_key] = data
+        self._cache_timestamps[cache_key] = datetime.utcnow()
+
+    def _clear_cache(self) -> None:
+        """Clear all cache entries"""
+        self._cache.clear()
+        self._cache_timestamps.clear()
 
     async def start_monitoring(self):
         """Start whale monitoring loop"""
@@ -705,6 +736,13 @@ class WhaleWatcher:
     async def get_enhanced_whale_radar_data(self, user_threshold: float = None) -> Dict[str, Any]:
         """Get enhanced whale radar data with dynamic thresholds and active symbols"""
         try:
+            # Check cache first
+            cache_key = f"enhanced_radar_{user_threshold or 'default'}"
+            cached_data = self._get_from_cache(cache_key)
+            if cached_data:
+                logger.debug(f"[CACHE] Using cached enhanced whale radar data")
+                return cached_data
+            
             # Determine thresholds based on symbol type and user input
             btc_eth_threshold = user_threshold if user_threshold else 500_000
             altcoin_threshold = user_threshold if user_threshold else 100_000
@@ -803,6 +841,8 @@ class WhaleWatcher:
                     "sell_count": sell_count,
                     "buy_amounts": buy_amounts_formatted,
                     "sell_amounts": sell_amounts_formatted,
+                    "buy_usd": stats["buy_usd"],
+                    "sell_usd": stats["sell_usd"],
                 }
 
                 if is_above_threshold:
@@ -827,12 +867,17 @@ class WhaleWatcher:
                 f"{len(active_whale_symbols)} symbols detected with whale activity."
             )
 
-            return {
+            result = {
                 "symbols_above_threshold": symbols_above_threshold,
                 "symbols_below_threshold": symbols_below_threshold,
                 "active_whale_symbols": active_whale_symbols,
                 "total_alerts": total_alerts,
             }
+            
+            # Cache the result
+            self._set_cache(cache_key, result)
+            
+            return result
 
         except Exception as e:
             logger.error(f"Error getting enhanced whale radar data: {e}")

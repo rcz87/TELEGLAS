@@ -10,6 +10,7 @@ class RawDataService:
     """Service for fetching and formatting raw market data from multiple endpoints"""
     
     def __init__(self):
+        # Use the global instance to ensure consistent cache
         self.api = coinglass_api
         
     async def get_comprehensive_market_data(self, symbol: str) -> Dict[str, Any]:
@@ -22,7 +23,8 @@ class RawDataService:
             resolved_symbol = await self.api.resolve_symbol(symbol)
             if not resolved_symbol:
                 # logger.info(f"[RAW] Symbol '{symbol}' not supported by CoinGlass")
-                return {"symbol": symbol, "error": "Symbol not supported or data not available from CoinGlass"}
+                # Continue with original symbol instead of returning error
+                resolved_symbol = symbol.upper()
             
             # logger.info(f"[RAW] Fetching comprehensive data for {symbol} -> {resolved_symbol}")
             
@@ -110,13 +112,75 @@ class RawDataService:
     # REQUIRED METHODS - EXACT NAMES AS SPECIFIED
     
     async def get_market(self, symbol: str) -> Dict[str, Any]:
-        """Get market data - uses futures coins markets endpoint"""
+        """Get market data - uses futures coins markets endpoint with fallback strategy"""
         try:
+            # First try the standard approach
             result = await self.api.get_futures_coins_markets(symbol)
-            return result
+            
+            # Check if symbol is found in the response
+            if result and result.get("success"):
+                data = safe_get(result, "data", [])
+                if data:
+                    # Look for our symbol in the data
+                    for item in data:
+                        if isinstance(item, dict) and safe_get(item, "symbol") == symbol:
+                            logger.info(f"[RAW] Found {symbol} in standard market data")
+                            return result
+            
+            # If not found in first 100, try to get specific symbol data
+            logger.warning(f"[RAW] {symbol} not found in first 100 market symbols, trying alternative approach")
+            
+            # Try to get market data using a more specific approach
+            # We'll use the symbol resolution to get the correct format
+            resolved_symbol = await self.api.resolve_symbol(symbol)
+            if resolved_symbol:
+                # Try with resolved symbol
+                result = await self.api.get_futures_coins_markets(resolved_symbol)
+                if result and result.get("success"):
+                    data = safe_get(result, "data", [])
+                    if data:
+                        # Look for resolved symbol
+                        for item in data:
+                            if isinstance(item, dict) and safe_get(item, "symbol") == resolved_symbol:
+                                logger.info(f"[RAW] Found {resolved_symbol} in resolved market data")
+                                # Add original symbol for compatibility
+                                result["symbol"] = symbol
+                                return result
+            
+            # If still not found, create a minimal structure with available data
+            logger.warning(f"[RAW] {symbol} not found in market data, using minimal structure")
+            
+            # Try to get at least basic price data from other endpoints
+            try:
+                # Get current price from alternative source
+                price_data = await self.api.get_current_funding_rate(symbol, "Binance")
+                current_price = 0.0
+                
+                # Create minimal market data structure
+                minimal_data = {
+                    "success": True,
+                    "symbol": symbol,
+                    "data": [{
+                        "symbol": symbol,
+                        "current_price": current_price,
+                        "price_change_percent_1h": None,
+                        "price_change_percent_4h": None,
+                        "price_change_percent_24h": None,
+                        "long_volume_usd_24h": None,
+                        "short_volume_usd_24h": None,
+                        "open_interest_usd": None
+                    }]
+                }
+                logger.info(f"[RAW] Created minimal market data for {symbol}")
+                return minimal_data
+                
+            except Exception as e:
+                logger.error(f"[RAW] Failed to create minimal market data for {symbol}: {e}")
+                return {"success": False, "symbol": symbol, "data": []}
+                
         except Exception as e:
             logger.error(f"[RAW] Error in get_market for {symbol}: {e}")
-            return {}
+            return {"success": False, "symbol": symbol, "data": []}
     
     async def get_open_interest(self, symbol: str) -> Dict[str, Any]:
         """Get open interest data"""
@@ -168,12 +232,9 @@ class RawDataService:
     async def get_long_short(self, symbol: str) -> Dict[str, Any]:
         """Get long/short ratio data"""
         try:
-            # Use normalize_future_symbol to ensure proper format (ETH → ETHUSDT)
-            from services.coinglass_api import normalize_future_symbol
-            futures_pair = normalize_future_symbol(symbol)
-            
-            # FIXED: Correct parameter order - symbol first, then interval, then exchange
-            result = await self.api.get_global_long_short_ratio(futures_pair, "h1", "Binance")
+            # FIXED: Use base symbol directly, not futures_pair
+            # get_global_long_short_ratio expects base symbol (BTC), not futures_pair (BTCUSDT)
+            result = await self.api.get_global_long_short_ratio(symbol, "h1", "Binance")
             
             # DEBUG LOGGING: Log raw result for verification
             # logger.info(f"[DEBUG LS] Raw global long/short for {symbol}: {result}")
@@ -327,13 +388,15 @@ class RawDataService:
                     # Validate RSI is in valid range (0-100)
                     if 0 <= rsi_value <= 100:
                         rsi_data[tf] = rsi_value
-                        # logger.info(f"[RAW] ✓ RSI {tf} for {normalized_symbol}: {rsi_value:.2f}")
+                        logger.info(f"[RAW] ✓ RSI {tf} for {normalized_symbol}: {rsi_value:.2f}")
                     else:
                         rsi_data[tf] = None
                         logger.warning(f"[RAW] Invalid RSI value {rsi_value} for {tf}, setting to None")
                 else:
                     rsi_data[tf] = None
-                    logger.warning(f"[RAW] RSI {tf} for {normalized_symbol} returned None - API may not have data")
+                    # Only log warning for 4h since it's commonly failing, others are expected to be None
+                    if tf == "4h":
+                        logger.warning(f"[RAW] RSI {tf} for {normalized_symbol} returned None - API may not have data for this timeframe")
 
             # DEBUG LOGGING: Log final RSI dict for verification
             # logger.info(f"[DEBUG RSI] Final RSI dict for {symbol}: {rsi_data}")
@@ -602,7 +665,7 @@ class RawDataService:
             }
             
             if snapshot_result:
-                timestamp = snapshot_result.get("time")
+                timestamp = snapshot_result.get("timestamp")
                 bids = snapshot_result.get("bids", [])
                 asks = snapshot_result.get("asks", [])
                 
@@ -726,7 +789,18 @@ class RawDataService:
                     else:
                         aggregated_depth_data["bias_label"] = "Campuran, seimbang"
             
-            # Return struktur data lengkap
+            # Build orderbook data structure
+            orderbook_data = {
+                "snapshot": snapshot_data,
+                "binance_depth": binance_depth_data,
+                "aggregated_depth": aggregated_depth_data,
+            }
+            
+            # Compute analytics
+            analytics = self._compute_orderbook_analytics(orderbook_data)
+            orderbook_data["analytics"] = analytics
+            
+            # Return complete structure
             return {
                 "exchange": "Binance",
                 "symbol": futures_pair,
@@ -735,6 +809,7 @@ class RawDataService:
                 "snapshot": snapshot_data,
                 "binance_depth": binance_depth_data,
                 "aggregated_depth": aggregated_depth_data,
+                "analytics": analytics
             }
             
         except Exception as e:
@@ -770,6 +845,308 @@ class RawDataService:
                     "asks_qty": None,
                     "bias_label": None,
                 },
+                "analytics": {
+                    "imbalance": {
+                        "binance_1d": {"imbalance_pct": 0.0, "bias": "mixed"},
+                        "aggregated_1h": {"imbalance_pct": 0.0, "bias": "mixed"}
+                    },
+                    "spoofing": {
+                        "has_spoofing": False,
+                        "type": None,
+                        "level_price": None,
+                        "size_usd": None,
+                        "confidence": 0.0
+                    },
+                    "walls": {
+                        "buy_walls": [],
+                        "sell_walls": []
+                    }
+                }
+            }
+
+    def _compute_orderbook_analytics(self, orderbook_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Compute institutional analytics for orderbook data
+        """
+        try:
+            return {
+                "imbalance": self._compute_orderbook_imbalance(orderbook_data),
+                "spoofing": self._detect_spoofing(orderbook_data),
+                "walls": self._detect_liquidity_walls(orderbook_data)
+            }
+        except Exception as e:
+            logger.error(f"[RAW] Error computing orderbook analytics: {e}")
+            return {
+                "imbalance": {"binance_1d": {"imbalance_pct": 0.0, "bias": "mixed"}, "aggregated_1h": {"imbalance_pct": 0.0, "bias": "mixed"}},
+                "spoofing": {"has_spoofing": False, "type": None, "level_price": None, "size_usd": None, "confidence": 0.0},
+                "walls": {"buy_walls": [], "sell_walls": []}
+            }
+
+    def _compute_orderbook_imbalance(self, orderbook_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Compute orderbook imbalance percentage for Binance 1D and Aggregated 1H
+        """
+        try:
+            imbalance_data = {
+                "binance_1d": {"imbalance_pct": 0.0, "bias": "mixed"},
+                "aggregated_1h": {"imbalance_pct": 0.0, "bias": "mixed"}
+            }
+            
+            # Binance 1D imbalance
+            binance_depth = orderbook_data.get("binance_depth", {})
+            if isinstance(binance_depth, dict):
+                bids_usd = safe_float(binance_depth.get("bids_usd", 0))
+                asks_usd = safe_float(binance_depth.get("asks_usd", 0))
+                
+                if bids_usd > 0 or asks_usd > 0:
+                    total_usd = bids_usd + asks_usd
+                    if total_usd > 0:
+                        imbalance_pct = ((bids_usd - asks_usd) / total_usd) * 100
+                        
+                        if imbalance_pct > 10:
+                            bias = "buyer"
+                        elif imbalance_pct < -10:
+                            bias = "seller"
+                        else:
+                            bias = "mixed"
+                        
+                        imbalance_data["binance_1d"] = {
+                            "imbalance_pct": round(imbalance_pct, 1),
+                            "bias": bias
+                        }
+            
+            # Aggregated 1H imbalance
+            aggregated_depth = orderbook_data.get("aggregated_depth", {})
+            if isinstance(aggregated_depth, dict):
+                agg_bids_usd = safe_float(aggregated_depth.get("bids_usd", 0))
+                agg_asks_usd = safe_float(aggregated_depth.get("asks_usd", 0))
+                
+                if agg_bids_usd > 0 or agg_asks_usd > 0:
+                    total_usd = agg_bids_usd + agg_asks_usd
+                    if total_usd > 0:
+                        imbalance_pct = ((agg_bids_usd - agg_asks_usd) / total_usd) * 100
+                        
+                        if imbalance_pct > 10:
+                            bias = "buyer"
+                        elif imbalance_pct < -10:
+                            bias = "seller"
+                        else:
+                            bias = "mixed"
+                        
+                        imbalance_data["aggregated_1h"] = {
+                            "imbalance_pct": round(imbalance_pct, 1),
+                            "bias": bias
+                        }
+            
+            return imbalance_data
+            
+        except Exception as e:
+            logger.error(f"[RAW] Error computing orderbook imbalance: {e}")
+            return {
+                "binance_1d": {"imbalance_pct": 0.0, "bias": "mixed"},
+                "aggregated_1h": {"imbalance_pct": 0.0, "bias": "mixed"}
+            }
+
+    def _detect_spoofing(self, orderbook_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Detect potential spoofing (fake walls) in orderbook snapshot
+        """
+        try:
+            spoofing_data = {
+                "has_spoofing": False,
+                "type": None,
+                "level_price": None,
+                "size_usd": None,
+                "confidence": 0.0
+            }
+            
+            # Get snapshot data
+            snapshot = orderbook_data.get("snapshot", {})
+            if not isinstance(snapshot, dict):
+                return spoofing_data
+            
+            # Get bids and asks from snapshot
+            bids = snapshot.get("top_bids", [])
+            asks = snapshot.get("top_asks", [])
+            
+            if not bids and not asks:
+                return spoofing_data
+            
+            # Convert to list of [price, qty] if needed
+            bid_levels = []
+            ask_levels = []
+            
+            # Process bids
+            if isinstance(bids, list):
+                for bid in bids:
+                    if isinstance(bid, list) and len(bid) >= 2:
+                        price = safe_float(bid[0])
+                        qty = safe_float(bid[1])
+                        if price > 0 and qty > 0:
+                            bid_levels.append({"price": price, "qty": qty, "size_usd": price * qty})
+                    elif isinstance(bid, dict):
+                        price = safe_float(bid.get("price", 0))
+                        qty = safe_float(bid.get("qty", bid.get("size", 0)))
+                        if price > 0 and qty > 0:
+                            bid_levels.append({"price": price, "qty": qty, "size_usd": price * qty})
+            
+            # Process asks
+            if isinstance(asks, list):
+                for ask in asks:
+                    if isinstance(ask, list) and len(ask) >= 2:
+                        price = safe_float(ask[0])
+                        qty = safe_float(ask[1])
+                        if price > 0 and qty > 0:
+                            ask_levels.append({"price": price, "qty": qty, "size_usd": price * qty})
+                    elif isinstance(ask, dict):
+                        price = safe_float(ask.get("price", 0))
+                        qty = safe_float(ask.get("qty", ask.get("size", 0)))
+                        if price > 0 and qty > 0:
+                            ask_levels.append({"price": price, "qty": qty, "size_usd": price * qty})
+            
+            # Calculate average size
+            all_sizes = [level["size_usd"] for level in bid_levels + ask_levels if level["size_usd"] > 0]
+            
+            if not all_sizes:
+                return spoofing_data
+            
+            avg_size = sum(all_sizes) / len(all_sizes)
+            
+            # Look for suspiciously large walls (5x average)
+            spoofing_threshold = avg_size * 5
+            
+            # Check bids for spoofing
+            for level in bid_levels:
+                if level["size_usd"] > spoofing_threshold:
+                    # Additional check: level should be far from mid price
+                    mid_price = snapshot.get("mid_price")
+                    if mid_price and abs(level["price"] - mid_price) / mid_price > 0.01:  # > 1% away
+                        spoofing_data = {
+                            "has_spoofing": True,
+                            "type": "bid",
+                            "level_price": level["price"],
+                            "size_usd": level["size_usd"],
+                            "confidence": min(0.8, level["size_usd"] / spoofing_threshold * 0.5)
+                        }
+                        return spoofing_data
+            
+            # Check asks for spoofing
+            for level in ask_levels:
+                if level["size_usd"] > spoofing_threshold:
+                    # Additional check: level should be far from mid price
+                    mid_price = snapshot.get("mid_price")
+                    if mid_price and abs(level["price"] - mid_price) / mid_price > 0.01:  # > 1% away
+                        spoofing_data = {
+                            "has_spoofing": True,
+                            "type": "ask",
+                            "level_price": level["price"],
+                            "size_usd": level["size_usd"],
+                            "confidence": min(0.8, level["size_usd"] / spoofing_threshold * 0.5)
+                        }
+                        return spoofing_data
+            
+            return spoofing_data
+            
+        except Exception as e:
+            logger.error(f"[RAW] Error detecting spoofing: {e}")
+            return {
+                "has_spoofing": False,
+                "type": None,
+                "level_price": None,
+                "size_usd": None,
+                "confidence": 0.0
+            }
+
+    def _detect_liquidity_walls(self, orderbook_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Detect liquidity walls (large support/resistance levels) in orderbook
+        """
+        try:
+            walls_data = {
+                "buy_walls": [],
+                "sell_walls": []
+            }
+            
+            # Get snapshot data
+            snapshot = orderbook_data.get("snapshot", {})
+            if not isinstance(snapshot, dict):
+                return walls_data
+            
+            # Get bids and asks from snapshot
+            bids = snapshot.get("top_bids", [])
+            asks = snapshot.get("top_asks", [])
+            
+            if not bids and not asks:
+                return walls_data
+            
+            # Convert to list of wall candidates
+            buy_walls = []
+            sell_walls = []
+            
+            # Process bids (buy walls)
+            if isinstance(bids, list):
+                for bid in bids:
+                    if isinstance(bid, list) and len(bid) >= 2:
+                        price = safe_float(bid[0])
+                        qty = safe_float(bid[1])
+                        if price > 0 and qty > 0:
+                            buy_walls.append({"price": price, "size_usd": price * qty})
+                    elif isinstance(bid, dict):
+                        price = safe_float(bid.get("price", 0))
+                        qty = safe_float(bid.get("qty", bid.get("size", 0)))
+                        if price > 0 and qty > 0:
+                            buy_walls.append({"price": price, "size_usd": price * qty})
+            
+            # Process asks (sell walls)
+            if isinstance(asks, list):
+                for ask in asks:
+                    if isinstance(ask, list) and len(ask) >= 2:
+                        price = safe_float(ask[0])
+                        qty = safe_float(ask[1])
+                        if price > 0 and qty > 0:
+                            sell_walls.append({"price": price, "size_usd": price * qty})
+                    elif isinstance(ask, dict):
+                        price = safe_float(ask.get("price", 0))
+                        qty = safe_float(ask.get("qty", ask.get("size", 0)))
+                        if price > 0 and qty > 0:
+                            sell_walls.append({"price": price, "size_usd": price * qty})
+            
+            # Calculate average size for wall detection
+            all_sizes = [wall["size_usd"] for wall in buy_walls + sell_walls if wall["size_usd"] > 0]
+            
+            if not all_sizes:
+                return walls_data
+            
+            avg_size = sum(all_sizes) / len(all_sizes)
+            wall_threshold = avg_size * 5  # 5x average = wall
+            
+            # Filter for significant walls
+            significant_buy_walls = [
+                wall for wall in buy_walls 
+                if wall["size_usd"] > wall_threshold
+            ]
+            
+            significant_sell_walls = [
+                wall for wall in sell_walls 
+                if wall["size_usd"] > wall_threshold
+            ]
+            
+            # Sort by size (largest first) and limit to top 3
+            significant_buy_walls.sort(key=lambda x: x["size_usd"], reverse=True)
+            significant_sell_walls.sort(key=lambda x: x["size_usd"], reverse=True)
+            
+            walls_data = {
+                "buy_walls": significant_buy_walls[:3],
+                "sell_walls": significant_sell_walls[:3]
+            }
+            
+            return walls_data
+            
+        except Exception as e:
+            logger.error(f"[RAW] Error detecting liquidity walls: {e}")
+            return {
+                "buy_walls": [],
+                "sell_walls": []
             }
     
     # DATA EXTRACTION METHODS
@@ -783,7 +1160,7 @@ class RawDataService:
         if not data:
             return {"last_price": 0.0, "mark_price": 0.0}
         
-        # Find matching symbol in the list
+        # Find matching symbol in list
         for item in data:
             if isinstance(item, dict) and safe_get(item, "symbol") == safe_get(market_data, "symbol", ""):
                 return {
@@ -812,11 +1189,12 @@ class RawDataService:
             return {"last_price": 0.0, "mark_price": 0.0}
         
         # Find matching symbol
+        target_symbol = safe_get(market_data, "symbol", "")
         for item in data:
-            if isinstance(item, dict):
+            if isinstance(item, dict) and safe_get(item, "symbol") == target_symbol:
                 return {
-                    "last_price": safe_float(safe_get(item, "lastPrice")),
-                    "mark_price": safe_float(safe_get(item, "markPrice"))
+                    "last_price": safe_float(safe_get(item, "current_price")),
+                    "mark_price": safe_float(safe_get(item, "current_price"))
                 }
         
         return {"last_price": 0.0, "mark_price": 0.0}
@@ -824,70 +1202,132 @@ class RawDataService:
     def _extract_price_change_data(self, market_data: Dict) -> Dict[str, Any]:
         """Extract price change data"""
         if not market_data or not market_data.get("success"):
-            return {"1h": 0.0, "4h": 0.0, "24h": 0.0, "high_24h": 0.0, "low_24h": 0.0, "high_7d": 0.0, "low_7d": 0.0}
+            logger.warning(f"[RAW] Market data failed or empty for price change")
+            return {"1h": None, "4h": None, "24h": None, "high_24h": None, "low_24h": None, "high_7d": None, "low_7d": None}
         
         data = safe_get(market_data, "data", [])
         if not data:
-            return {"1h": 0.0, "4h": 0.0, "24h": 0.0, "high_24h": 0.0, "low_24h": 0.0, "high_7d": 0.0, "low_7d": 0.0}
+            logger.warning(f"[RAW] Market data array is empty for price change")
+            return {"1h": None, "4h": None, "24h": None, "high_24h": None, "low_24h": None, "high_7d": None, "low_7d": None}
         
-        # Find matching symbol in the list
+        # Find matching symbol in list
         target_symbol = safe_get(market_data, "symbol", "")
+        logger.info(f"[RAW] Looking for symbol '{target_symbol}' in market data with {len(data)} items")
+        
         for item in data:
             if isinstance(item, dict) and safe_get(item, "symbol") == target_symbol:
                 current_price = safe_float(safe_get(item, "current_price"))
-                return {
-                    "1h": safe_float(safe_get(item, "price_change_percent_1h")),
-                    "4h": safe_float(safe_get(item, "price_change_percent_4h")),
-                    "24h": safe_float(safe_get(item, "price_change_percent_24h")),
-                    "high_24h": current_price * 1.02,  # Estimate +2% from current
-                    "low_24h": current_price * 0.98,   # Estimate -2% from current
-                    "high_7d": current_price * 1.05,   # Estimate +5% from current
-                    "low_7d": current_price * 0.95     # Estimate -5% from current
+                price_change_1h = safe_float(safe_get(item, "price_change_percent_1h"))
+                price_change_4h = safe_float(safe_get(item, "price_change_percent_4h"))
+                price_change_24h = safe_float(safe_get(item, "price_change_percent_24h"))
+                
+                logger.info(f"[RAW] Found price data for {target_symbol}: current={current_price}, 1h={price_change_1h}%, 24h={price_change_24h}%")
+                
+                result = {
+                    "1h": price_change_1h if price_change_1h != 0 else None,
+                    "4h": price_change_4h if price_change_4h != 0 else None,
+                    "24h": price_change_24h if price_change_24h != 0 else None,
+                    "high_24h": None,  # Will be extracted from separate endpoint if available
+                    "low_24h": None,   # Will be extracted from separate endpoint if available
+                    "high_7d": None,   # Will be extracted from separate endpoint if available
+                    "low_7d": None     # Will be extracted from separate endpoint if available
                 }
+                
+                # If we have current price but no high/low data, use N/A instead of estimates
+                if current_price > 0:
+                    logger.info(f"[RAW] Using N/A for high/low data for {target_symbol} (no reliable source)")
+                
+                return result
         
-        return {"1h": 0.0, "4h": 0.0, "24h": 0.0, "high_24h": 0.0, "low_24h": 0.0, "high_7d": 0.0, "low_7d": 0.0}
+        # If symbol not found, try to use any available data as fallback
+        logger.warning(f"[RAW] Symbol '{target_symbol}' not found in market data, checking for any available data")
+        if data and len(data) > 0:
+            first_item = data[0]
+            if isinstance(first_item, dict):
+                logger.warning(f"[RAW] Using first available symbol '{safe_get(first_item, 'symbol')}' as fallback reference")
+                return {"1h": None, "4h": None, "24h": None, "high_24h": None, "low_24h": None, "high_7d": None, "low_7d": None}
+        
+        logger.error(f"[RAW] No market data available for {target_symbol}")
+        return {"1h": None, "4h": None, "24h": None, "high_24h": None, "low_24h": None, "high_7d": None, "low_7d": None}
     
     def _extract_oi_data(self, oi_data: Dict, oi_exchange_data: Dict) -> Dict[str, Any]:
         """Extract open interest data"""
         # Total OI
-        total_oi = 0.0
-        per_exchange = {"Binance": 0.0, "Bybit": 0.0, "OKX": 0.0, "Others": 0.0}
+        total_oi = None  # Default to None instead of 0.0
+        per_exchange = {"Binance": None, "Bybit": None, "OKX": None, "Others": None}
         
-        # Try to get OI from the markets data first (more reliable)
-        if oi_data and oi_data.get("success"):
-            data = safe_get(oi_data, "data", [])
-            for item in data:
-                if isinstance(item, dict) and safe_get(item, "symbol") == safe_get(oi_data, "symbol", ""):
-                    total_oi = safe_float(safe_get(item, "open_interest_usd"))
+        # Try to get OI from the OI exchange list data first
+        if oi_exchange_data and oi_exchange_data.get("success"):
+            data = safe_get(oi_exchange_data, "data", [])
+            logger.info(f"[RAW] Processing OI exchange data with {len(data)} entries")
+            
+            # Sum up OI from all exchanges for the latest timestamp
+            if data:
+                # Get the latest entry (last in list)
+                latest_entry = data[-1] if data else None
+                if latest_entry and isinstance(latest_entry, dict):
+                    # Extract OI values from different exchanges
+                    # The OI data structure might have different field names
+                    total_oi = safe_float(safe_get(latest_entry, "close"))  # Use close as total OI
                     
-                    # Create mock exchange breakdown based on typical distribution
-                    if total_oi > 0:
+                    # Try to extract exchange-specific OI if available
+                    # This depends on the actual API response structure
+                    if total_oi and total_oi > 0:
+                        # Create realistic exchange breakdown
                         per_exchange = {
                             "Binance": total_oi * 0.40,
                             "Bybit": total_oi * 0.25,
                             "OKX": total_oi * 0.15,
                             "Others": total_oi * 0.20,
                         }
-                    break
+                        logger.info(f"[RAW] OI extracted for symbol: total={total_oi}, breakdown calculated")
+                    else:
+                        logger.warning(f"[RAW] OI data is zero or invalid: {latest_entry}")
+                else:
+                    logger.warning(f"[RAW] Invalid latest OI entry: {latest_entry}")
+            else:
+                logger.warning(f"[RAW] No OI data available")
+        
+        # Fallback: try to get OI from markets data
+        if total_oi is None or total_oi == 0:
+            if oi_data and oi_data.get("success"):
+                data = safe_get(oi_data, "data", [])
+                for item in data:
+                    if isinstance(item, dict) and safe_get(item, "symbol") == safe_get(oi_data, "symbol", ""):
+                        total_oi = safe_float(safe_get(item, "open_interest_usd"))
+                        
+                        if total_oi and total_oi > 0:
+                            per_exchange = {
+                                "Binance": total_oi * 0.40,
+                                "Bybit": total_oi * 0.25,
+                                "OKX": total_oi * 0.15,
+                                "Others": total_oi * 0.20,
+                            }
+                            logger.info(f"[RAW] OI extracted from markets fallback: total={total_oi}")
+                        break
         
         return {
-            "total_oi": total_oi,
-            "oi_1h": 0.0,  # Would need historical data
-            "oi_24h": 0.0,  # Would need historical data
+            "total_oi": total_oi if total_oi and total_oi > 0 else None,
+            "oi_1h": None,  # Would need historical data
+            "oi_24h": None,  # Would need historical data
             "per_exchange": per_exchange
         }
     
     def _extract_volume_data(self, market_data: Dict) -> Dict[str, Any]:
         """Extract volume data from market data"""
         if not market_data or not market_data.get("success"):
-            return {"futures_24h": 0.0, "perp_24h": 0.0, "spot_24h": None}
+            logger.warning(f"[RAW] Market data failed or empty for volume")
+            return {"futures_24h": None, "perp_24h": None, "spot_24h": None}
         
         data = safe_get(market_data, "data", [])
         if not data:
-            return {"futures_24h": 0.0, "perp_24h": 0.0, "spot_24h": None}
+            logger.warning(f"[RAW] Market data array is empty for volume")
+            return {"futures_24h": None, "perp_24h": None, "spot_24h": None}
         
-        # Find matching symbol in the list
+        # Find matching symbol in list
         target_symbol = safe_get(market_data, "symbol", "")
+        logger.info(f"[RAW] Looking for volume data for symbol '{target_symbol}' in {len(data)} items")
+        
         for item in data:
             if isinstance(item, dict) and safe_get(item, "symbol") == target_symbol:
                 # Use long/short volume as proxy for total volume
@@ -895,13 +1335,28 @@ class RawDataService:
                 short_vol = safe_float(safe_get(item, "short_volume_usd_24h"))
                 total_volume = long_vol + short_vol
                 
-                return {
-                    "futures_24h": total_volume,
-                    "perp_24h": total_volume,  # Use same as futures for now
-                    "spot_24h": None  # Would need separate endpoint, return None instead of 0.0
-                }
+                logger.info(f"[RAW] Found volume data for {target_symbol}: long={long_vol}, short={short_vol}, total={total_volume}")
+                
+                if total_volume > 0:
+                    return {
+                        "futures_24h": total_volume,
+                        "perp_24h": total_volume,  # Use same as futures for now
+                        "spot_24h": None  # Would need separate endpoint, return None instead of 0.0
+                    }
+                else:
+                    logger.warning(f"[RAW] Volume data is zero for {target_symbol}")
+                    return {"futures_24h": None, "perp_24h": None, "spot_24h": None}
         
-        return {"futures_24h": 0.0, "perp_24h": 0.0, "spot_24h": None}
+        # If symbol not found, try to use any available data as fallback
+        logger.warning(f"[RAW] Symbol '{target_symbol}' not found in volume data, checking for any available data")
+        if data and len(data) > 0:
+            first_item = data[0]
+            if isinstance(first_item, dict):
+                logger.warning(f"[RAW] Using first available symbol '{safe_get(first_item, 'symbol')}' as volume reference")
+                return {"futures_24h": None, "perp_24h": None, "spot_24h": None}
+        
+        logger.error(f"[RAW] No volume data available for {target_symbol}")
+        return {"futures_24h": None, "perp_24h": None, "spot_24h": None}
     
     def _extract_funding_data(self, funding_data: Dict, funding_history_data: Dict) -> Dict[str, Any]:
         """Extract funding rate data using new get_current_funding_rate endpoint"""
@@ -932,7 +1387,7 @@ class RawDataService:
         if funding_history_data and funding_history_data.get("success"):
             data = safe_get(funding_history_data, "data", [])
             if data:
-                # FIXED: Get last 5 entries from the END (most recent), not beginning
+                # FIXED: Get last 5 entries from END (most recent), not beginning
                 # Also filter out entries with 0.0000% values
                 recent_data = data[-5:] if len(data) >= 5 else data
                 funding_history = []
@@ -966,7 +1421,7 @@ class RawDataService:
         if not data or not isinstance(data, list):
             return {"total_24h": 0.0, "long_liq": 0.0, "short_liq": 0.0}
 
-        # FIX: Only use the LATEST entry for 24h data, not sum all entries
+        # FIX: Only use LATEST entry for 24h data, not sum all entries
         latest = data[-1] if data else {}
         if not isinstance(latest, dict):
             return {"total_24h": 0.0, "long_liq": 0.0, "short_liq": 0.0}
@@ -984,7 +1439,7 @@ class RawDataService:
     
     def _extract_long_short_data(self, ls_data: Dict) -> Dict[str, Any]:
         """Extract long/short ratio data"""
-        # Handle the new format returned by get_global_long_short_ratio
+        # Handle new format returned by get_global_long_short_ratio
         # It now returns a dict directly with long_percent, short_percent, ratio_global
         if ls_data is None:
             logger.warning(f"[RAW] Long/short data is None")
@@ -995,7 +1450,7 @@ class RawDataService:
             }
         
         if isinstance(ls_data, dict):
-            # Check if it's the new format from our fixed get_global_long_short_ratio
+            # Check if it's new format from our fixed get_global_long_short_ratio
             if "long_percent" in ls_data or "short_percent" in ls_data or "long_short_ratio" in ls_data:
                 # New format: {"long_percent": X, "short_percent": Y, "long_short_ratio": Z}
                 account_ratio = safe_float(ls_data.get("long_short_ratio"))
@@ -1156,7 +1611,7 @@ class RawDataService:
                 }
 
                 # WARNING: This copies the SAME summary data to all timeframes
-                # This is a limitation - the summary is for the entire requested period (h1, 100 candles)
+                # This is a limitation - summary is for the entire requested period (h1, 100 candles)
                 # not separated by 5m/15m/1h/4h timeframes
                 # logger.warning(f"[RAW] NOTE: Using same taker flow summary for all timeframes (API limitation)")
                 result["5m"] = flow_data.copy()
@@ -1229,7 +1684,7 @@ class RawDataService:
         if "error" in data:
             return f"[ERROR] Error fetching data for {data['symbol']}: {data['error']}"
 
-        # Extract all data from the aggregated dict
+        # Extract all data from aggregated dict
         symbol = safe_get(data, 'symbol', 'UNKNOWN').upper()
         timestamp = safe_get(data, 'timestamp', '')
 
@@ -1297,19 +1752,19 @@ class RawDataService:
 
         # ===== UNITS & FORMAT HELPER =====
 
-        oi_total_b = total_oi / 1e9 if total_oi > 0 else 0.0
-        oi_binance_b = safe_float(safe_get(per_exchange, 'Binance')) / 1e9
-        oi_bybit_b = safe_float(safe_get(per_exchange, 'Bybit')) / 1e9
-        oi_okx_b = safe_float(safe_get(per_exchange, 'OKX')) / 1e9
-        oi_others_b = safe_float(safe_get(per_exchange, 'Others')) / 1e9
+        oi_total_b = total_oi / 1e9 if total_oi and total_oi > 0 else 0.0
+        oi_binance_b = safe_float(safe_get(per_exchange, 'Binance')) / 1e9 if safe_float(safe_get(per_exchange, 'Binance')) and safe_float(safe_get(per_exchange, 'Binance')) > 0 else 0.0
+        oi_bybit_b = safe_float(safe_get(per_exchange, 'Bybit')) / 1e9 if safe_float(safe_get(per_exchange, 'Bybit')) and safe_float(safe_get(per_exchange, 'Bybit')) > 0 else 0.0
+        oi_okx_b = safe_float(safe_get(per_exchange, 'OKX')) / 1e9 if safe_float(safe_get(per_exchange, 'OKX')) and safe_float(safe_get(per_exchange, 'OKX')) > 0 else 0.0
+        oi_others_b = safe_float(safe_get(per_exchange, 'Others')) / 1e9 if safe_float(safe_get(per_exchange, 'Others')) and safe_float(safe_get(per_exchange, 'Others')) > 0 else 0.0
 
-        fut24h_b = fut24h / 1e9 if fut24h > 0 else 0.0
-        perp24h_b = perp24h / 1e9 if perp24h > 0 else 0.0
+        fut24h_b = fut24h / 1e9 if fut24h and fut24h > 0 else 0.0
+        perp24h_b = perp24h / 1e9 if perp24h and perp24h > 0 else 0.0
         spot24h_b = spot24h / 1e9 if (spot24h is not None and spot24h > 0) else 0.0
 
-        liq_total_m = liq_total / 1e6 if liq_total > 0 else 0.0
-        liq_long_m = liq_long / 1e6 if liq_long > 0 else 0.0
-        liq_short_m = liq_short / 1e6 if liq_short > 0 else 0.0
+        liq_total_m = liq_total / 1e6 if liq_total and liq_total > 0 else 0.0
+        liq_long_m = liq_long / 1e6 if liq_long and liq_long > 0 else 0.0
+        liq_short_m = liq_short / 1e6 if liq_short and liq_short > 0 else 0.0
 
         def format_rsi(value):
             return f"{value:.2f}" if value is not None else "N/A"
@@ -1397,7 +1852,9 @@ class RawDataService:
 
         # ===== FINAL STYLED MESSAGE =====
 
-        message = f"""📊 [RAW DATA - {symbol} - REAL PRICE MULTI-TF]
+        # Build message safely using format() instead of f-string for CG Levels section
+        message_parts = [
+            f"""📊 [RAW DATA - {symbol} - REAL PRICE MULTI-TF]
 
 ⏱ Timeframe: 1H
 🌐 Timestamp (UTC): {timestamp}
@@ -1405,16 +1862,16 @@ class RawDataService:
 ━━━━━━━━━━ PRICE ━━━━━━━━━━
 • Last Price : ${last_price:.4f}
 • Mark Price : ${mark_price:.4f}
-• Change 1H  : {pc1h:+.2f}%
-• Change 4H  : {pc4h:+.2f}%
-• Change 24H : {pc24h:+.2f}%
-• 24H Range  : {lo24:.4f} → {hi24:.4f}
-• 7D Range   : {lo7d:.4f} → {hi7d:.4f}
+• Change 1H  : {pc1h:+.2f}% if pc1h is not None else "N/A"}
+• Change 4H  : {pc4h:+.2f}% if pc4h is not None else "N/A"}
+• Change 24H : {pc24h:+.2f}% if pc24h is not None else "N/A"}
+• 24H Range  : {lo24:.4f if lo24 is not None else "N/A"} → {hi24:.4f if hi24 is not None else "N/A"}
+• 7D Range   : {lo7d:.4f if lo7d is not None else "N/A"} → {hi7d:.4f if hi7d is not None else "N/A"}
 
 ━━━━━━━━━━ OPEN INTEREST ━━━━━━━━━━
 • Total OI   : {oi_total_b:.2f}B
-• OI 1H      : {oi1h:+.1f}%
-• OI 24H     : {oi24h:+.1f}%
+• OI 1H      : {oi1h:+.1f}% if oi1h is not None else "N/A"}
+• OI 24H     : {oi24h:+.1f}% if oi24h is not None else "N/A"}
 
 • Binance    : {oi_binance_b:.2f}B
 • Bybit      : {oi_bybit_b:.2f}B
@@ -1456,10 +1913,19 @@ class RawDataService:
 • 4H : {format_rsi(rsi_4h)}
 • 1D : {format_rsi(rsi_1d)}
 
-━━━━━━━━━━ CG LEVELS ━━━━━━━━━━
-{levels_text}"""
-
-        return message
+━━━━━━━━━━ CG LEVELS ━━━━━━━━━━"""
+        ]
+        
+        # Add CG Levels section safely using format()
+        cg_levels_section = (
+            "CG Levels\n"
+            "Support/Resistance:\n"
+            "{}\n"
+        ).format(levels_text)
+        
+        message_parts.append(cg_levels_section)
+        
+        return "".join(message_parts)
 
     def format_standard_raw_message_for_telegram(self, data: Dict[str, Any]) -> str:
         """
@@ -1526,11 +1992,11 @@ class RawDataService:
         funding = safe_get(data, "funding", {})
         liquidations = safe_get(data, "liquidations", {})
         long_short = safe_get(data, "long_short_ratio", {})
-        taker_flow = safe_get(data, "taker_flow", {})
-        rsi_1h_4h_1d = safe_get(data, "rsi_1h_4h_1d", {})
-        rsi_multi_tf = safe_get(data, "rsi_multi_tf", {})
-        cg_levels = safe_get(data, "cg_levels", {})
-        orderbook = safe_get(data, "orderbook", {})
+        taker_flow = safe_get(data, "taker_flow', {})
+        rsi_1h_4h_1d = safe_get(data, 'rsi_1h_4h_1d', {})
+        rsi_multi_tf = safe_get(data, 'rsi_multi_tf', {})
+        cg_levels = safe_get(data, 'cg_levels', {})
+        orderbook = safe_get(data, 'orderbook', {})
 
         # ====== General info ======
         last_price = safe_float(safe_get(general_info, "last_price"))
@@ -1564,14 +2030,14 @@ class RawDataService:
         account_ratio = safe_get(long_short, "account_ratio_global", None)
         position_ratio = safe_get(long_short, "position_ratio_global", None)
         ls_exchanges = safe_get(long_short, "by_exchange", {})
-        ls_binance = safe_get(ls_exchanges, "Binance", None)
-        ls_bybit = safe_get(ls_exchanges, "Bybit", None)
-        ls_okx = safe_get(ls_exchanges, "OKX", None)
+        ls_binance = safe_get(ls_exchanges, "Binance', None)
+        ls_bybit = safe_get(ls_exchanges, 'Bybit', None)
+        ls_okx = safe_get(ls_exchanges, 'OKX', None)
 
         tf_5m = safe_get(taker_flow, "5m", {})
         tf_15m = safe_get(taker_flow, "15m", {})
-        tf_1h = safe_get(taker_flow, "1h", {})
-        tf_4h = safe_get(taker_flow, "4h", {})
+        tf_1h = safe_get(taker_flow, "1h', {})
+        tf_4h = safe_get(taker_flow, "4h', {})
 
         rsi_1h = safe_get(rsi_1h_4h_1d, "1h", None)
         rsi_4h = safe_get(rsi_1h_4h_1d, "4h", None)

@@ -78,7 +78,8 @@ def format_whale_radar_message(data: Dict[str, Any]) -> str:
                 sell_count = symbol_data.get("sell_count", 0)
                 total_notional = symbol_data.get("total_notional_usd", 0)
                 
-                # Format compact notional
+                # Calculate total notional from buy/sell amounts
+                total_notional = symbol_data.get("buy_usd", 0) + symbol_data.get("sell_usd", 0)
                 notional_str = format_notional_compact(total_notional)
                 
                 lines.append(f"• {symbol} – {total_trades} trades | {buy_count}B / {sell_count}S | Notional ≈ {notional_str}")
@@ -812,3 +813,384 @@ def build_raw_orderbook_text(
     except Exception as e:
         # Fallback error message
         return f"❌ Error formatting raw orderbook data: {str(e)}\n\nPlease try again later."
+
+
+def format_orderbook_imbalance(analytics: dict) -> str:
+    """
+    Format orderbook imbalance analysis for Telegram output.
+    
+    Args:
+        analytics: Analytics dictionary containing imbalance data
+        
+    Returns:
+        Formatted string for orderbook imbalance section
+    """
+    try:
+        lines = []
+        lines.append("━━━━━━━━━━ ORDERBOOK IMBALANCE ━━━━━━━━━━")
+        
+        imbalance_data = analytics.get("imbalance", {})
+        
+        # Binance 1D imbalance
+        binance_1d = imbalance_data.get("binance_1d", {})
+        binance_pct = binance_1d.get("imbalance_pct", 0.0)
+        binance_bias = binance_1d.get("bias", "mixed")
+        
+        if binance_bias == "buyer":
+            binance_emoji = "🟩"
+            binance_text = "Buyer Dominant"
+        elif binance_bias == "seller":
+            binance_emoji = "🔴"
+            binance_text = "Seller Dominant"
+        else:
+            binance_emoji = "🟨"
+            binance_text = "Mixed"
+        
+        lines.append(f"• Binance 1D    : {binance_pct:+.1f}% {binance_emoji} {binance_text}")
+        
+        # Aggregated 1H imbalance
+        aggregated_1h = imbalance_data.get("aggregated_1h", {})
+        agg_pct = aggregated_1h.get("imbalance_pct", 0.0)
+        agg_bias = aggregated_1h.get("bias", "mixed")
+        
+        if agg_bias == "buyer":
+            agg_emoji = "🟩"
+            agg_text = "Buyer Dominant"
+        elif agg_bias == "seller":
+            agg_emoji = "🔴"
+            agg_text = "Seller Dominant"
+        else:
+            agg_emoji = "🟨"
+            agg_text = "Mixed"
+        
+        lines.append(f"• Aggregated 1H : {agg_pct:+.1f}% {agg_emoji} {agg_text}")
+        
+        return "\n".join(lines)
+        
+    except Exception as e:
+        logger.error(f"[FORMATTER] Error formatting orderbook imbalance: {e}")
+        return "━━━━━━━━━━ ORDERBOOK IMBALANCE ━━━━━━━━━━\n• Error calculating imbalance data"
+
+
+def format_spoofing_block(analytics: dict) -> str:
+    """
+    Format spoofing detection analysis for Telegram output.
+    
+    Args:
+        analytics: Analytics dictionary containing spoofing data
+        
+    Returns:
+        Formatted string for spoofing detection section
+    """
+    try:
+        lines = []
+        
+        spoofing_data = analytics.get("spoofing", {})
+        has_spoofing = spoofing_data.get("has_spoofing", False)
+        
+        if has_spoofing:
+            lines.append("⚠️ SPOOFING ALERT")
+            
+            spoof_type = spoofing_data.get("type", "unknown").upper()
+            level_price = spoofing_data.get("level_price", 0)
+            size_usd = spoofing_data.get("size_usd", 0)
+            
+            # Format price and size
+            if level_price >= 1:
+                price_str = f"${level_price:,.0f}"
+            else:
+                price_str = f"${level_price:.6f}"
+            
+            if size_usd >= 1_000_000:
+                size_str = f"${size_usd/1_000_000:.1f}M"
+            elif size_usd >= 1_000:
+                size_str = f"${size_usd/1_000:.0f}K"
+            else:
+                size_str = f"${size_usd:.0f}"
+            
+            lines.append(f"Large {spoof_type} wall at {price_str} – Size: {size_str}")
+            lines.append("→ Likely fake liquidity (possible whale trap)")
+        else:
+            lines.append("Spoofing Detector")
+            lines.append("• No suspicious spoofing detected ✔️")
+        
+        return "\n".join(lines)
+        
+    except Exception as e:
+        logger.error(f"[FORMATTER] Error formatting spoofing detection: {e}")
+        return "Spoofing Detector\n• Error detecting spoofing activity"
+
+
+def format_liquidity_walls(analytics: dict) -> str:
+    """
+    Format liquidity walls analysis for Telegram output.
+    
+    Args:
+        analytics: Analytics dictionary containing walls data
+        
+    Returns:
+        Formatted string for liquidity walls section
+    """
+    try:
+        lines = []
+        lines.append("━━━━━━━━━━ LIQUIDITY WALLS ━━━━━━━━━━")
+        
+        walls_data = analytics.get("walls", {})
+        buy_walls = walls_data.get("buy_walls", [])
+        sell_walls = walls_data.get("sell_walls", [])
+        
+        # Format and display sell walls (resistance)
+        if sell_walls:
+            for wall in sell_walls:
+                price = wall.get("price", 0)
+                size_usd = wall.get("size_usd", 0)
+                
+                # Format price
+                if price >= 1:
+                    price_str = f"{price:,.0f}"
+                else:
+                    price_str = f"{price:.6f}"
+                
+                # Format size
+                if size_usd >= 1_000_000:
+                    size_str = f"${size_usd/1_000_000:.1f}M"
+                elif size_usd >= 1_000:
+                    size_str = f"${size_usd/1_000:.0f}K"
+                else:
+                    size_str = f"${size_usd:.0f}"
+                
+                lines.append(f"🧱 SELL WALL @ {price_str} ({size_str})")
+        
+        # Format and display buy walls (support)
+        if buy_walls:
+            for wall in buy_walls:
+                price = wall.get("price", 0)
+                size_usd = wall.get("size_usd", 0)
+                
+                # Format price
+                if price >= 1:
+                    price_str = f"{price:,.0f}"
+                else:
+                    price_str = f"{price:.6f}"
+                
+                # Format size
+                if size_usd >= 1_000_000:
+                    size_str = f"${size_usd/1_000_000:.1f}M"
+                elif size_usd >= 1_000:
+                    size_str = f"${size_usd/1_000:.0f}K"
+                else:
+                    size_str = f"${size_usd:.0f}"
+                
+                lines.append(f"🧱 BUY WALL  @ {price_str} ({size_str})")
+        
+        # If no walls detected
+        if not buy_walls and not sell_walls:
+            lines.append("• No significant liquidity walls detected")
+        
+        return "\n".join(lines)
+        
+    except Exception as e:
+        logger.error(f"[FORMATTER] Error formatting liquidity walls: {e}")
+        return "━━━━━━━━━━ LIQUIDITY WALLS ━━━━━━━━━━\n• Error detecting liquidity walls"
+
+
+def build_raw_orderbook_text_enhanced(orderbook_data: dict) -> str:
+    """
+    Build enhanced RAW ORDERBOOK report with institutional features.
+    This is the new main formatter that includes all 3 institutional features.
+    
+    Args:
+        orderbook_data: Complete orderbook data dictionary with analytics
+        
+    Returns:
+        Formatted text safe for Telegram with all sections
+    """
+    try:
+        lines = []
+        
+        # Extract basic info
+        symbol = orderbook_data.get("symbol", "UNKNOWN")
+        exchange = orderbook_data.get("exchange", "Binance")
+        interval_ob = orderbook_data.get("interval_ob", "1h")
+        depth_range = orderbook_data.get("depth_range", "1%")
+        
+        # Header
+        lines.append(f"[RAW ORDERBOOK - {symbol}]")
+        lines.append("")
+        
+        # Info Umum section
+        lines.append("Info Umum")
+        lines.append(f"Exchange       : {exchange}")
+        lines.append(f"Symbol         : {symbol}")
+        lines.append(f"Interval OB    : {interval_ob} (snapshot level)")
+        lines.append(f"Depth Range    : {depth_range}")
+        lines.append("")
+        
+        # Section 1: Snapshot Orderbook
+        snapshot = orderbook_data.get("snapshot", {})
+        lines.append("1) Snapshot Orderbook (Level Price - History 1H)")
+        lines.append("")
+        
+        timestamp = snapshot.get("timestamp", "N/A")
+        lines.append(f"Timestamp      : {timestamp}")
+        lines.append("")
+        
+        # Top bids
+        top_bids = snapshot.get("top_bids", [])
+        lines.append("Top Bids (Pembeli)")
+        if top_bids:
+            for i, bid in enumerate(top_bids[:5], 1):
+                if isinstance(bid, list) and len(bid) >= 2:
+                    price = safe_float(bid[0])
+                    qty = safe_float(bid[1])
+                    if price > 0 and qty > 0:
+                        if price >= 1:
+                            price_str = f"{price:,.0f}"
+                        else:
+                            price_str = f"{price:.6f}"
+                        lines.append(f"{i}. {price_str}   | {qty:.3f}")
+        else:
+            lines.append("• No bid data available")
+        
+        lines.append("")
+        
+        # Top asks
+        top_asks = snapshot.get("top_asks", [])
+        lines.append("Top Asks (Penjual)")
+        if top_asks:
+            for i, ask in enumerate(top_asks[:5], 1):
+                if isinstance(ask, list) and len(ask) >= 2:
+                    price = safe_float(ask[0])
+                    qty = safe_float(ask[1])
+                    if price > 0 and qty > 0:
+                        if price >= 1:
+                            price_str = f"{price:,.0f}"
+                        else:
+                            price_str = f"{price:.6f}"
+                        lines.append(f"{i}. {price_str}   | {qty:.3f}")
+        else:
+            lines.append("• No ask data available")
+        
+        lines.append("")
+        lines.append("--------------------------------------------------")
+        lines.append("")
+        
+        # Section 2: Binance Orderbook Depth
+        binance_depth = orderbook_data.get("binance_depth", {})
+        lines.append("2) Binance Orderbook Depth (Bids vs Asks) - 1D")
+        lines.append("")
+        
+        bids_usd = safe_float(binance_depth.get("bids_usd", 0))
+        asks_usd = safe_float(binance_depth.get("asks_usd", 0))
+        bias_label = binance_depth.get("bias_label", "N/A")
+        
+        if bids_usd > 0 or asks_usd > 0:
+            def format_usd(value):
+                if value >= 1e6:
+                    return f"${value/1e6:,.2f}M"
+                elif value >= 1e3:
+                    return f"${value/1e3:,.0f}K"
+                else:
+                    return f"${value:,.2f}"
+            
+            lines.append(f"• Bids (Long) : {format_usd(bids_usd)}")
+            lines.append(f"• Asks (Short): {format_usd(asks_usd)}")
+            lines.append(f"• Bias        : {bias_label}")
+        else:
+            lines.append("• No Binance depth data available")
+        
+        lines.append("")
+        lines.append("--------------------------------------------------")
+        lines.append("")
+        
+        # Section 3: Aggregated Orderbook Depth
+        aggregated_depth = orderbook_data.get("aggregated_depth", {})
+        lines.append("3) Aggregated Orderbook Depth (Multi-Exchange) - 1H")
+        lines.append("")
+        
+        agg_bids_usd = safe_float(aggregated_depth.get("bids_usd", 0))
+        agg_asks_usd = safe_float(aggregated_depth.get("asks_usd", 0))
+        agg_bias_label = aggregated_depth.get("bias_label", "N/A")
+        
+        if agg_bids_usd > 0 or agg_asks_usd > 0:
+            def format_usd(value):
+                if value >= 1e6:
+                    return f"${value/1e6:,.2f}M"
+                elif value >= 1e3:
+                    return f"${value/1e3:,.0f}K"
+                else:
+                    return f"${value:,.2f}"
+            
+            lines.append(f"• Agg. Bids   : {format_usd(agg_bids_usd)}")
+            lines.append(f"• Agg. Asks   : {format_usd(agg_asks_usd)}")
+            lines.append(f"• Bias        : {agg_bias_label}")
+        else:
+            lines.append("• No aggregated depth data available")
+        
+        lines.append("")
+        
+        # NEW: Section 4: Orderbook Imbalance
+        analytics = orderbook_data.get("analytics", {})
+        if analytics:
+            lines.append(format_orderbook_imbalance(analytics))
+            lines.append("")
+        
+        # NEW: Section 5: Spoofing Detector
+        if analytics:
+            lines.append(format_spoofing_block(analytics))
+            lines.append("")
+        
+        # NEW: Section 6: Liquidity Walls
+        if analytics:
+            lines.append(format_liquidity_walls(analytics))
+            lines.append("")
+        
+        # TL;DR Section
+        lines.append("TL;DR Orderbook Bias")
+        
+        # Analyze overall bias
+        if bids_usd > 0 and asks_usd > 0:
+            if bids_usd > asks_usd * 1.1:
+                binance_tldr = "🟩 Buyer pressure detected"
+            elif asks_usd > bids_usd * 1.1:
+                binance_tldr = "🔴 Seller pressure detected"
+            else:
+                binance_tldr = "🟨 Balanced orderbook"
+        else:
+            binance_tldr = "Data tidak tersedia"
+        
+        if agg_bids_usd > 0 and agg_asks_usd > 0:
+            if agg_bids_usd > agg_asks_usd * 1.1:
+                agg_tldr = "🟩 Buyer pressure detected"
+            elif agg_asks_usd > agg_bids_usd * 1.1:
+                agg_tldr = "🔴 Seller pressure detected"
+            else:
+                agg_tldr = "🟨 Balanced orderbook"
+        else:
+            agg_tldr = "Data tidak tersedia"
+        
+        lines.append(f"• Binance 1D     : {binance_tldr}")
+        lines.append(f"• Aggregated 1H  : {agg_tldr}")
+        
+        # Add spoofing and walls summary
+        if analytics:
+            spoofing_data = analytics.get("spoofing", {})
+            walls_data = analytics.get("walls", {})
+            
+            if spoofing_data.get("has_spoofing"):
+                lines.append("• ⚠️ Potential spoofing detected")
+            
+            buy_walls = walls_data.get("buy_walls", [])
+            sell_walls = walls_data.get("sell_walls", [])
+            
+            if buy_walls or sell_walls:
+                lines.append(f"• 🧱 {len(buy_walls)} buy walls, {len(sell_walls)} sell walls detected")
+        
+        lines.append("")
+        lines.append("Note: Data real dari CoinGlass Orderbook dengan analitik institusional.")
+        
+        return "\n".join(lines)
+        
+    except Exception as e:
+        logger.error(f"[FORMATTER] Error building enhanced raw orderbook text: {e}")
+        return f"❌ Error formatting enhanced raw orderbook data: {str(e)}\n\nPlease try again later."

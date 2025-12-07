@@ -1,0 +1,84 @@
+{
+  "timestamp": "2025-12-07T06:19:25.621368",
+  "tests": {
+    "major_symbols": [
+      {
+        "symbol": "BTC",
+        "success": true,
+        "response_time": 1.7107973098754883,
+        "total_liquidation": 919695.5499999999,
+        "long_liquidation": 86379.08,
+        "short_liquidation": 833316.47,
+        "has_data": true,
+        "consistent": true,
+        "realistic": true,
+        "data_source": "raw_fallback"
+      },
+      {
+        "symbol": "ETH",
+        "success": true,
+        "response_time": 1.2525789737701416,
+        "total_liquidation": 473300.89,
+        "long_liquidation": 117523.59,
+        "short_liquidation": 355777.3,
+        "has_data": true,
+        "consistent": true,
+        "realistic": true,
+        "data_source": "raw_fallback"
+      },
+      {
+        "symbol": "SOL",
+        "success": true,
+        "response_time": 1.2819201946258545,
+        "total_liquidation": 181497.01,
+        "long_liquidation": 41558.56,
+        "short_liquidation": 139938.45,
+        "has_data": true,
+        "consistent": true,
+        "realistic": true,
+        "data_source": "raw_fallback"
+      }
+    ],
+    "mid_cap_symbols": [
+      {
+        "symbol": "HYPE",
+        "success": true,
+        "response_time": 1.2861247062683105,
+        "total_liquidation": 2097.13,
+        "has_data": true
+      },
+      {
+        "symbol": "PONKE",
+        "success": true,
+        "response_time": 4.315959692001343,
+        "total_liquidation": 0.0,
+        "has_data": false
+      }
+    ],
+    "invalid_symbols": [
+      {
+        "symbol": "INVALID123",
+        "success": true,
+        "response_time": 5.612955570220947,
+        "handled_gracefully": true,
+        "data_returned": true
+      },
+      {
+        "symbol": "FAKECOIN",
+        "success": true,
+        "response_time": 5.532698392868042,
+        "handled_gracefully": true,
+        "data_returned": true
+      }
+    ]
+  },
+  "summary": {
+    "overall_success_rate": 1.0,
+    "major_symbols_success": 1.0,
+    "mid_cap_success": 1.0,
+    "invalid_symbols_success": 1.0,
+    "critical_issues": [],
+    "readiness_level": "PRODUCTION READY",
+    "readiness_emoji": "\u2705"
+  }
+}

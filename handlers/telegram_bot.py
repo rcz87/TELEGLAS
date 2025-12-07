@@ -165,6 +165,9 @@ class TelegramBot:
         # Add handlers
         self._add_handlers()
 
+        # Set up bot commands
+        await self._setup_bot_commands()
+
         logger.info("Telegram bot initialized successfully")
 
     def _add_handlers(self):
@@ -185,7 +188,8 @@ class TelegramBot:
         self.application.add_handler(CommandHandler("alerts_status", self.handle_alerts_status))
         self.application.add_handler(CommandHandler("alerts_on_w", self.handle_alerts_on_whale))
         self.application.add_handler(CommandHandler("alerts_off_w", self.handle_alerts_off_whale))
-        self.application.add_handler(CommandHandler("raw_orderbook", self.handle_raw_orderbook))
+        # Add raw_orderbook handler from dedicated module
+        self.application.add_handler(CommandHandler("raw_orderbook", raw_orderbook_handler))
 
         # Callback query handler for inline keyboards
         self.application.add_handler(CallbackQueryHandler(self.handle_callback))
@@ -194,6 +198,35 @@ class TelegramBot:
         self.application.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message)
         )
+
+    async def _setup_bot_commands(self):
+        """Set up bot commands to appear in Telegram command menu"""
+        try:
+            from telegram import BotCommand
+            
+            commands = [
+                BotCommand("start", "Start the bot and see main menu"),
+                BotCommand("help", "Show help and available commands"),
+                BotCommand("raw", "Get comprehensive market data for a symbol"),
+                BotCommand("raw_orderbook", "Orderbook depth & imbalance analysis"),
+                BotCommand("liq", "Get liquidation data for a symbol"),
+                BotCommand("sentiment", "Show market sentiment analysis"),
+                BotCommand("whale", "Show recent whale transactions"),
+                BotCommand("subscribe", "Subscribe to alerts for a symbol"),
+                BotCommand("unsubscribe", "Unsubscribe from alerts"),
+                BotCommand("alerts", "View your alert subscriptions"),
+                BotCommand("status", "Check bot status and performance"),
+                BotCommand("alerts_status", "Show alert system status"),
+                BotCommand("alerts_on_w", "Turn ON whale alerts"),
+                BotCommand("alerts_off_w", "Turn OFF whale alerts"),
+            ]
+            
+            await self.application.bot.set_my_commands(commands)
+            logger.info("Bot commands set up successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to set up bot commands: {e}")
+            # Don't raise exception - bot can still work without commands list
 
     def _is_whitelisted(self, user_id: int) -> bool:
         """Check if user is whitelisted - admin always has access"""
@@ -221,23 +254,32 @@ class TelegramBot:
         keyboard = get_main_menu_keyboard()
 
         welcome_message = (
-            f"🛸 Welcome to CryptoSat Bot, {username}!\n\n"
-            "🎯 High-Frequency Trading Signals & Market Intelligence\n\n"
-            "📊 Available Commands:\n"
-            "/liq [SYMBOL] - Get liquidation data\n"
-            "/raw [SYMBOL] - Comprehensive market data\n"
-            "/sentiment - Market sentiment analysis\n"
-            "/whale - Recent whale transactions\n"
-            "/subscribe [SYMBOL] - Subscribe to alerts\n"
-            "/unsubscribe [SYMBOL] - Unsubscribe from alerts\n"
-            "/status - Bot status and performance\n"
-            "/alerts - View your alert subscriptions\n\n"
-            "🚨 Real-time Monitoring Active:\n"
-            "• Massive Liquidations (>$1M)\n"
-            f"• Whale Movements (>${settings.WHALE_TRANSACTION_THRESHOLD_USD:,.0f})\n"
-            "• Extreme Funding Rates\n\n"
-            "⚡ Powered by CoinGlass API v4\n\n"
-            "👇 Gunakan tombol di bawah untuk akses cepat."
+            f"🛸 Welcome to CryptoSat Bot, R11C0!\n\n"
+            "🎯 High-Frequency Trading Signals & Market Intelligence\n"
+            "Powered by real-time data & CoinGlass API v4.\n\n"
+            "📊 Main Commands:\n"
+            "/liq [SYMBOL]         → Liquidation radar (24H)  \n"
+            "/raw [SYMBOL]         → Raw market data multi-timeframe  \n"
+            "/raw_orderbook [SYMBOL] → Orderbook depth & imbalance  \n"
+            "/whale                → Whale radar (multi-coin Hyperliquid)\n"
+            "/sentiment            → Market sentiment (global view)\n\n"
+            "/subscribe [SYMBOL]   → Subscribe alerts untuk 1 coin  \n"
+            "/unsubscribe [SYMBOL] → Hentikan alert untuk 1 coin  \n"
+            "/status               → Cek status sistem & layanan  \n"
+            "/alerts               → Lihat daftar alert aktif  \n"
+            "/alerts_on_w          → Aktifkan whale alert  \n"
+            "/alerts_off_w         → Matikan whale alert  \n\n"
+            "💡 Contoh:\n"
+            "• /liq BTC  \n"
+            "• /raw SOL  \n"
+            "• /raw_orderbook BTC  \n"
+            "• /subscribe BTC  \n\n"
+            "🚨 Real-time Monitoring Aktif:\n"
+            "• Massive liquidations (>$1M)  \n"
+            "• Whale movements (>$500K)  \n"
+            "• Extreme funding rates  \n\n"
+            "👇 Gunakan tombol di bawah untuk akses cepat ke:\n"
+            "• /liq BTC   • /raw BTC   • /whale   • /status"
         )
 
         await update.message.reply_text(welcome_message, reply_markup=keyboard)
@@ -281,7 +323,8 @@ class TelegramBot:
     async def handle_liquidation(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ):
-        """Handle /liq command"""
+        """Handle /liq command - using new message builder"""
+        from utils.message_builders import build_liq_message
 
         # Extract symbol from command
         symbol = None
@@ -297,33 +340,19 @@ class TelegramBot:
             )
             return
 
-        # Get liquidation data
-        liquidation_data = await liquidation_monitor.get_symbol_liquidation_summary(
-            symbol
-        )
-
-        if not liquidation_data:
+        try:
+            # Use new message builder
+            message = await build_liq_message(symbol)
+            
+            # Send the formatted message (plain text to avoid markdown issues)
+            await update.message.reply_text(message, parse_mode=None)
+            
+        except Exception as e:
+            logger.error(f"[LIQ] Error building liquidation message for {symbol}: {e}")
             await update.message.reply_text(
-                self.sanitize(f"❌ *No Data Found*\n\n"
-                f"Could not retrieve liquidation data for {symbol}\n"
-                "Please check symbol and try again."),
-                parse_mode="Markdown",
+                f"⚠️ Terjadi kesalahan saat mengambil data liquidation untuk {symbol}. Coba lagi beberapa saat lagi.",
+                parse_mode=None
             )
-            return
-
-        # Format response
-        liq_emoji = "📉" if liquidation_data["liquidation_usd"] > 1000000 else "📊"
-        price_emoji = "🔴" if liquidation_data["price_change"] < 0 else "🟢"
-
-        message = (
-            f"{liq_emoji} *{self.sanitize(symbol)} Liquidation Data*\n\n"
-            f"💰 Total Liquidations: ${liquidation_data['liquidation_usd']:,.0f}\n"
-            f"{price_emoji} Price Change: {liquidation_data['price_change']:+.2f}%\n"
-            f"📊 24h Volume: ${liquidation_data['volume_24h']:,.0f}\n"
-            f"🕐 Last Update: {liquidation_data['last_update']}\n\n"
-        )
-
-        await update.message.reply_text(message, parse_mode="Markdown")
 
     @require_access
     async def handle_sentiment(
@@ -727,86 +756,29 @@ class TelegramBot:
 
     @require_access
     async def handle_whale(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /whale command - Enhanced Whale Radar with ALL symbols and dynamic thresholds"""
-        
-        # Get user from update
-        user = None
-        if update.message:
-            user = update.message.from_user
-        elif update.callback_query:
-            user = update.callback_query.from_user
-        
-        user_id = user.id if user else None
-        username = user.username or user.first_name if user else "Unknown"
-        
-        # Extract threshold from arguments (optional)
-        user_threshold = None  # Default: use dynamic thresholds
-        if context.args:
-            try:
-                # Parse threshold from args (e.g., /whale 200k)
-                threshold_str = context.args[0].upper()
-                if 'K' in threshold_str:
-                    user_threshold = float(threshold_str.replace('K', '')) * 1_000
-                elif 'M' in threshold_str:
-                    user_threshold = float(threshold_str.replace('M', '')) * 1_000_000
-                else:
-                    user_threshold = float(threshold_str)
-            except (ValueError, AttributeError):
-                user_threshold = None
-        
-        # Log incoming request
-        if user_threshold:
-            logger.info(f"[/whale] user_id={user_id} username={username} user_threshold=${user_threshold:,.0f}")
-        else:
-            logger.info(f"[/whale] user_id={user_id} username={username} using dynamic thresholds")
-        
+        """Handle /whale command - using new message builder"""
+        from utils.message_builders import build_whale_message
+
         # Send typing action
         await update.message.chat.send_action(action="typing")
         
         try:
-            # Use enhanced whale watcher method with ALL data (no truncation)
-            enhanced_data = await whale_watcher.get_enhanced_whale_radar_data(user_threshold)
-            sample_trades = await whale_watcher.get_recent_whale_activity(limit=20)  # Get more sample trades
-            all_positions = await whale_watcher.get_whale_positions(limit=50)  # Get ALL positions, then sort
+            # Use new message builder
+            message = await build_whale_message()
             
-            # Prepare data for new formatter
-            whale_data = {
-                "active_symbols": enhanced_data.get("active_whale_symbols", []),
-                "recent_trades": sample_trades,
-                "positions": all_positions
-            }
-            
-            # Use new clean formatter for Telegram-friendly output
-            formatted_message = format_whale_radar_message(whale_data)
-            
-            # Send message (plain text to avoid markdown issues)
-            if len(formatted_message) > 4000:  # Telegram limit
+            # Send the formatted message (plain text to avoid markdown issues)
+            if len(message) > 4000:  # Telegram limit
                 # Split into chunks if too long
-                chunks = [formatted_message[i:i+4000] for i in range(0, len(formatted_message), 4000)]
+                chunks = [message[i:i+4000] for i in range(0, len(message), 4000)]
                 for chunk in chunks:
                     await update.message.reply_text(chunk, parse_mode=None)
             else:
-                await update.message.reply_text(formatted_message, parse_mode=None)
-            
-            # Comprehensive logging (as required)
-            total_alerts = enhanced_data.get("total_alerts", 0)
-            symbols_above_threshold = len(enhanced_data.get("symbols_above_threshold", []))
-            symbols_below_threshold = len(enhanced_data.get("symbols_below_threshold", []))
-            active_symbols_count = len(enhanced_data.get("active_whale_symbols", []))
-            
-            logger.info(
-                f"[WHALE] Parsed {total_alerts} alerts, "
-                f"{symbols_above_threshold} symbols above threshold, "
-                f"{symbols_below_threshold} symbols below threshold, "
-                f"{active_symbols_count} symbols detected with whale activity."
-            )
-            
-            logger.info(f"[/whale] Successfully sent enhanced whale radar with {total_alerts} total alerts")
+                await update.message.reply_text(message, parse_mode=None)
             
         except Exception as e:
-            logger.error(f"[/whale] Error processing enhanced whale command: {e}")
+            logger.error(f"[WHALE] Error building whale message: {e}")
             await update.message.reply_text(
-                "❌ Error processing whale data. Please try again later.",
+                "⚠️ Terjadi kesalahan saat mengambil data whale. Coba lagi beberapa saat lagi.",
                 parse_mode=None
             )
 
@@ -1185,11 +1157,6 @@ class TelegramBot:
                 parse_mode=None,
             )
 
-    @require_access
-    async def handle_raw_orderbook(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /raw_orderbook command - RAW orderbook analysis"""
-        # Delegate to the dedicated handler
-        await raw_orderbook_handler(update.message)
 
     def _format_raw_orderbook_message(self, data: dict) -> str:
         """Format raw orderbook data according to exact requirements"""

@@ -526,9 +526,13 @@ class CoinGlassAPI:
             
             # Check cache first (15 minutes TTL)
             if (self._symbol_cache.get('futures_coins') and 
-                current_time - self._symbol_cache.get('futures_coins_timestamp', 0) < 900):  # 15 minutes
+                current_time - self._symbol_cache.get('futures_coins_timestamp', 0) < 900):  # 15 minutes TTL
                 
                 cached_data = self._symbol_cache['futures_coins']
+                logger.debug(f"[SYMBOL_RESOLVER] Using cached futures coins data ({len(cached_data.get('data', []))} coins)")
+                
+                # Extract symbols from cached data and return the cached result
+                # This method should only cache and return data, not resolve symbols
                 logger.debug(f"[SYMBOL_RESOLVER] Using cached futures coins data ({len(cached_data.get('data', []))} coins)")
                 return cached_data
             
@@ -1283,15 +1287,28 @@ class CoinGlassAPI:
                             if symbol:
                                 supported_symbols.add(symbol)
                 
+                # DEBUG: Log what we found
+                if len(supported_symbols) > 0:
+                    logger.info(f"[SYMBOL_RESOLVER] Extracted {len(supported_symbols)} symbols from cache: {list(supported_symbols)[:10]}...")
+                else:
+                    logger.warning(f"[SYMBOL_RESOLVER] No symbols extracted from cache. Data type: {type(data)}, First item: {data[0] if data else 'None'}")
+                    # Debug: Check what's actually in cache
+                    logger.debug(f"[SYMBOL_RESOLVER] Cache keys: {list(self._symbol_cache.keys())}")
+                    logger.debug(f"[SYMBOL_RESOLVER] Cache data sample: {str(cached_data)[:200]}...")
+                
+                
                 # Try exact match first
                 if normalized in supported_symbols:
+                    logger.info(f"[SYMBOL_RESOLVER] Found exact match: {normalized}")
                     return normalized
                 
                 # Try partial match (startswith)
                 for symbol in supported_symbols:
                     if symbol.startswith(normalized) or normalized.startswith(symbol):
+                        logger.info(f"[SYMBOL_RESOLVER] Found partial match: {normalized} -> {symbol}")
                         return symbol
                 
+                logger.warning(f"[SYMBOL_RESOLVER] No match found for {normalized} in {len(supported_symbols)} symbols")
                 return None
             
             # Cache miss or expired, fetch fresh futures_coins data
@@ -1309,7 +1326,12 @@ class CoinGlassAPI:
                 # Extract unique symbols from futures_coins data
                 supported_symbols = set()
                 for item in data:
-                    if isinstance(item, dict):
+                    if isinstance(item, str):
+                        # Data is directly a string symbol like "BTC", "ETH", "SOL"
+                        symbol = str(item).upper().strip()
+                        if symbol:
+                            supported_symbols.add(symbol)
+                    elif isinstance(item, dict):
                         # Try different field names for symbol
                         symbol = None
                         for field in ['symbol', 'pair', 'name', 'coin']:
@@ -1327,9 +1349,9 @@ class CoinGlassAPI:
                         if symbol:
                             supported_symbols.add(symbol)
                 
-                # Update cache
-                self._symbol_cache['supported_futures_symbols'] = supported_symbols
-                self._symbol_cache['supported_futures_timestamp'] = current_time
+                # Update cache with consistent keys
+                self._symbol_cache['futures_coins'] = result
+                self._symbol_cache['futures_coins_timestamp'] = current_time
                 
                 logger.info(f"[SYMBOL_RESOLVER] Cached {len(supported_symbols)} supported futures symbols from CoinGlass")
                 
