@@ -107,7 +107,7 @@ class WhaleWatcher:
                 except Exception as e:
                     error_type = type(e).__name__
                     logger.error(f"[LOOP_ERROR] {error_type} in whale monitoring loop: {str(e)}")
-                    # Continue to loop - don't let one error stop the monitoring
+                    # Continue to loop - don't let one error stop monitoring
                     await asyncio.sleep(30)  # Wait 30 seconds on error
 
         finally:
@@ -874,7 +874,7 @@ class WhaleWatcher:
                 "total_alerts": total_alerts,
             }
             
-            # Cache the result
+            # Cache result
             self._set_cache(cache_key, result)
             
             return result
@@ -887,6 +887,97 @@ class WhaleWatcher:
                 "active_whale_symbols": [],
                 "total_alerts": 0
             }
+
+    async def get_recent_whale_trades(self, symbol: str = None, limit: int = 10):
+        """
+        Get recent whale trades - compatibility method
+        """
+        try:
+            return await self.api.get_whale_alert_hyperliquid()
+        except Exception as e:
+            logger.error(f"[WHALE] Error getting recent whale trades: {e}")
+            return {"success": False, "data": [], "error": str(e)}
+
+    def format_whale_alerts(self, whale_data):
+        """Format whale alerts for Telegram notification"""
+        try:
+            # Handle different response formats
+            if isinstance(whale_data, dict):
+                if whale_data.get("success", False):
+                    data = whale_data.get("data", [])
+                else:
+                    return "No whale trades available."
+            elif isinstance(whale_data, list):
+                data = whale_data
+            else:
+                return "No whale trades available."
+            
+            # Handle case where data is not a list
+            if isinstance(data, dict):
+                data = [data]
+            elif not isinstance(data, list):
+                return "No whale trades available."
+
+            if not data:
+                return "No recent whale trades detected."
+            
+            output = []
+            output.append("WHALE ACTIVITY")
+            output.append("=" * 50)
+            
+            processed_count = 0
+            for item in data[:5]:  # Top 5 trades
+                try:
+                    if not isinstance(item, dict):
+                        continue
+
+                    # Extract transaction data with correct API field mapping
+                    symbol = str(safe_get(item, "symbol", "")).upper().strip()
+                    if not symbol:
+                        continue
+                    
+                    # Map position_action to side
+                    position_action = safe_int(safe_get(item, "position_action", 0))
+                    if position_action == 2:
+                        side = "SELL"
+                    elif position_action == 1:
+                        side = "BUY"
+                    else:
+                        continue  # Skip unknown sides
+                    
+                    # Use position_value_usd for notional
+                    amount_usd = safe_float(safe_get(item, "position_value_usd"), 0.0)
+                    price = safe_float(safe_get(item, "entry_price"), 0.0)
+                    
+                    # Only include significant trades
+                    if amount_usd < 100000:  # $100k threshold
+                        continue
+                    
+                    # Format notional
+                    if amount_usd >= 1000000:
+                        notional_str = f"${amount_usd/1000000:.1f}M"
+                    elif amount_usd >= 1000:
+                        notional_str = f"${amount_usd/1000:.0f}K"
+                    else:
+                        notional_str = f"${amount_usd:.0f}"
+                    
+                    direction = "BUY" if side == "BUY" else "SELL"
+                    trade_line = f"[{direction}] {symbol} – {notional_str} @ ${price:,.2f}"
+                    output.append(trade_line)
+                    processed_count += 1
+
+                except Exception as e:
+                    logger.warning(f"Error formatting whale trade item: {e}")
+                    continue
+            
+            if processed_count == 0:
+                return "No significant whale trades detected (>$100K)."
+            
+            return "\n".join(output)
+            
+        except Exception as e:
+            logger.error(f"Error formatting whale alerts: {e}")
+            return "Error formatting whale trades."
 
 
 async def get_enhanced_whale_radar(user_threshold: float = None):

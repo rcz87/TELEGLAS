@@ -82,7 +82,7 @@ def require_access(func):
             logger.exception("Error in require_access decorator: %s", e)
             if update and hasattr(update, 'effective_message') and update.effective_message:
                 await update.effective_message.reply_text(
-                    "⚠️ An error occurred while processing your request.",
+                    f"⚠️ Error: {str(e)[:100]}\n\nPlease try again or contact admin.",
                     parse_mode=None,
                 )
             return
@@ -125,7 +125,7 @@ def require_public_access(func):
             logger.exception("Error in require_public_access decorator: %s", e)
             if update and hasattr(update, 'effective_message') and update.effective_message:
                 await update.effective_message.reply_text(
-                    "⚠️ An error occurred while processing your request.",
+                    f"⚠️ Error: {str(e)[:100]}\n\nPlease try again or contact admin.",
                     parse_mode=None,
                 )
             return
@@ -1531,7 +1531,7 @@ class TelegramBot:
             
             # Format support/resistance levels
             if support_levels is None or resistance_levels is None:
-                levels_text = "Support/Resistance: N/A (not available for current plan)"
+                levels_text = "Support/Resistance data not available from API"
             else:
                 support_str = ', '.join([f'${x:.2f}' for x in (support_levels[:3] if isinstance(support_levels, list) else [support_levels])])
                 resistance_str = ', '.join([f'${x:.2f}' for x in (resistance_levels[:3] if isinstance(resistance_levels, list) else [resistance_levels])])

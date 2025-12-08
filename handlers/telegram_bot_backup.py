@@ -896,7 +896,7 @@ class TelegramBot:
             
             # Format support/resistance levels
             if support_levels is None or resistance_levels is None:
-                levels_text = "Support/Resistance: N/A (not available for current plan)"
+                levels_text = "Support/Resistance data not available from API"
             else:
                 support_str = ', '.join([f'${x:.2f}' for x in (support_levels[:3] if isinstance(support_levels, list) else [support_levels])])
                 resistance_str = ', '.join([f'${x:.2f}' for x in (resistance_levels[:3] if isinstance(resistance_levels, list) else [resistance_levels])])
