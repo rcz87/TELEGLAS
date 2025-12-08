@@ -161,9 +161,13 @@ class CryptoSatBot:
             if not settings.ENABLE_BROADCAST_ALERTS and not settings.ENABLE_WHALE_ALERTS:
                 return  # No broadcasting allowed
 
-            alerts = await db_manager.get_pending_alerts(limit=10)
+            try:
+                alerts = await db_manager.get_pending_alerts(limit=10)
+            except asyncio.CancelledError:
+                logger.warning("Database operation cancelled during get_pending_alerts")
+                return
             
-            # Handle case where alerts is empty due to cancellation
+            # Handle case where alerts is empty due to cancellation or no pending alerts
             if not alerts:
                 return
 
@@ -178,7 +182,7 @@ class CryptoSatBot:
                     await db_manager.mark_alert_sent(alert["id"])
                     logger.debug(f"Broadcasted alert {alert['id']} (type: {alert.get('alert_type', 'unknown')})")
                 except asyncio.CancelledError:
-                    logger.warning("Alert broadcasting cancelled")
+                    logger.warning("Alert broadcasting cancelled during message send")
                     break
                 except Exception as alert_error:
                     logger.error(f"Failed to broadcast alert {alert.get('id', 'unknown')}: {alert_error}")
