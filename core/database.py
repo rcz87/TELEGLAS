@@ -336,6 +336,9 @@ class DatabaseManager:
 
                 return alerts
 
+        except asyncio.CancelledError:
+            logger.warning("Database operation cancelled during get_pending_alerts")
+            return []
         except Exception as e:
             logger.error(f"Failed to get pending alerts: {e}")
             return []

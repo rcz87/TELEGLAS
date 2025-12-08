@@ -162,20 +162,33 @@ class CryptoSatBot:
                 return  # No broadcasting allowed
 
             alerts = await db_manager.get_pending_alerts(limit=10)
+            
+            # Handle case where alerts is empty due to cancellation
+            if not alerts:
+                return
 
             for alert in alerts:
-                # Only broadcast whale alerts if general broadcasting is disabled but whale alerts are enabled
-                if not settings.ENABLE_BROADCAST_ALERTS and settings.ENABLE_WHALE_ALERTS:
-                    if alert.get("alert_type") != "whale":
-                        continue  # Skip non-whale alerts
-                
-                await telegram_bot.broadcast_alert(alert["message"])
-                await db_manager.mark_alert_sent(alert["id"])
-                logger.debug(f"Broadcasted alert {alert['id']} (type: {alert.get('alert_type', 'unknown')})")
+                try:
+                    # Only broadcast whale alerts if general broadcasting is disabled but whale alerts are enabled
+                    if not settings.ENABLE_BROADCAST_ALERTS and settings.ENABLE_WHALE_ALERTS:
+                        if alert.get("alert_type") != "whale":
+                            continue  # Skip non-whale alerts
+                    
+                    await telegram_bot.broadcast_alert(alert["message"])
+                    await db_manager.mark_alert_sent(alert["id"])
+                    logger.debug(f"Broadcasted alert {alert['id']} (type: {alert.get('alert_type', 'unknown')})")
+                except asyncio.CancelledError:
+                    logger.warning("Alert broadcasting cancelled")
+                    break
+                except Exception as alert_error:
+                    logger.error(f"Failed to broadcast alert {alert.get('id', 'unknown')}: {alert_error}")
+                    continue
 
             if alerts:
                 logger.info(f"[BROADCAST] Broadcasted {len(alerts)} alerts")
 
+        except asyncio.CancelledError:
+            logger.warning("Broadcast pending alerts task cancelled")
         except Exception as e:
             logger.error(f"[ERROR] Failed to broadcast alerts: {e}")
 
