@@ -6,7 +6,7 @@ Contains helper functions to build messages without Telegram dependencies
 import asyncio
 from typing import Dict, List, Optional, Any
 from loguru import logger
-from services.whale_watcher import WhaleWatcher
+from services.whale_watcher import WhaleWatcher, get_enhanced_whale_radar
 from services.raw_data_service import RawDataService
 from services.liquidation_monitor import LiquidationMonitor
 from utils.formatters import (

@@ -111,9 +111,13 @@ class WhaleWatcher:
                     await asyncio.sleep(30)  # Wait 30 seconds on error
 
         finally:
-            # Clean up session when stopping
-            if hasattr(self.api, 'close_session'):
-                await self.api.close_session()
+            # Clean up session when stopping - only if explicitly needed
+            # Note: CoinGlassAPI manages sessions internally for long-running processes
+            try:
+                if hasattr(self.api, 'close_session'):
+                    await self.api.close_session()
+            except Exception as e:
+                logger.warning(f"[SESSION] Error closing session: {e}")
             logger.info("[STOP] Whale monitoring stopped")
 
     async def stop_monitoring(self):
