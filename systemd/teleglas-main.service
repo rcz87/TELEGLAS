@@ -1,0 +1,26 @@
+[Unit]
+Description=TELEGLAS Main Bot (Manual Commands)
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/TELEGLAS
+Environment=PATH=/opt/TELEGLAS/venv/bin
+ExecStart=/opt/TELEGLAS/venv/bin/python main.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/opt/TELEGLAS/logs/main-bot.log
+StandardError=append:/opt/TELEGLAS/logs/main-bot.log
+
+# Resource Limits
+MemoryMax=512M
+CPUQuota=50%
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

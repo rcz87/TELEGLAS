@@ -90,13 +90,17 @@ class CryptoSatBot:
         """Start background monitoring services based on configuration"""
         logger.info("[START] Starting monitoring services...")
 
-        # ONLY start whale watching if enabled
+        # WHALE ALERTS NOW HANDLED BY SEPARATE WS_ALERT BOT
+        # Auto whale monitoring has been moved to ws_alert module
+        logger.info("[INFO] Auto whale monitoring moved to WS Alert Bot")
+        logger.info("[INFO] To enable auto whale alerts: python -m ws_alert.alert_runner")
+        
+        # Manual whale commands still available in main bot
         if settings.ENABLE_WHALE_ALERTS:
-            logger.info("[START] Starting whale monitoring (ENABLE_WHALE_ALERTS=true)")
-            task = asyncio.create_task(whale_watcher.start_monitoring())
-            self.monitoring_tasks.append(task)
+            logger.info("[INFO] Manual whale commands enabled in main bot")
+            logger.info("[INFO] Use /whale command for manual whale alerts")
         else:
-            logger.info("[SKIP] Whale monitoring disabled (ENABLE_WHALE_ALERTS=false)")
+            logger.info("[SKIP] Whale functionality completely disabled")
 
         # All other monitors (liquidation, funding) are MANUAL ONLY - do not start automatically
         logger.info("[INFO] Liquidation and funding rate monitoring are MANUAL ONLY")
@@ -122,7 +126,7 @@ class CryptoSatBot:
                     logger.warning(
                         f"[WARN] Monitoring task {i} has stopped: {task.exception()}"
                     )
-                    # Restart the task if it failed
+                    # Restart task if it failed
                     self.monitoring_tasks.pop(i)
                     await self._restart_monitoring_task(i)
 
@@ -140,9 +144,9 @@ class CryptoSatBot:
                 self.monitoring_tasks.insert(0, task)
                 logger.info("[RESTART] Restarted liquidation monitoring")
             elif task_index == 1:  # Whale watcher
-                task = asyncio.create_task(whale_watcher.start_monitoring())
-                self.monitoring_tasks.insert(1, task)
-                logger.info("[RESTART] Restarted whale monitoring")
+                # Auto whale monitoring moved to WS Alert Bot - do not restart
+                logger.info("[INFO] Whale monitoring task stopped - not restarting (moved to WS Alert Bot)")
+                logger.info("[INFO] To restart auto whale alerts: python -m ws_alert.alert_runner")
             elif task_index == 2:  # Funding rate radar
                 task = asyncio.create_task(funding_rate_radar.start_monitoring())
                 self.monitoring_tasks.insert(2, task)
@@ -197,7 +201,7 @@ class CryptoSatBot:
             logger.error(f"[ERROR] Failed to broadcast alerts: {e}")
 
     async def start(self):
-        """Start the CryptoSat bot"""
+        """Start CryptoSat bot"""
         try:
             # Initialize all components
             await self.initialize()
@@ -242,13 +246,9 @@ class CryptoSatBot:
 
         try:
             # Stop monitoring tasks gracefully
-            # First stop whale watcher to properly close session
-            try:
-                await whale_watcher.stop_monitoring()
-            except Exception as e:
-                logger.warning(f"[WARNING] Error stopping whale watcher: {e}")
-
-            # Cancel other monitoring tasks
+            # Note: whale_watcher.stop_monitoring() is no longer called since auto monitoring moved to WS Alert Bot
+            
+            # Cancel monitoring tasks
             for i, task in enumerate(self.monitoring_tasks):
                 if not task.done():
                     task.cancel()
@@ -283,7 +283,7 @@ async def main():
     
     # Use process lock to ensure only one instance runs
     with ProcessLock():
-        # Debug the LOG_LEVEL value
+        # Debug's LOG_LEVEL value
         print(f"DEBUG: LOG_LEVEL value = '{settings.LOG_LEVEL}'")
         print(f"DEBUG: LOG_LEVEL type = {type(settings.LOG_LEVEL)}")
         print(f"DEBUG: LOG_LEVEL.lower() = '{settings.LOG_LEVEL.lower()}'")
@@ -293,7 +293,7 @@ async def main():
         logger.add(
             sys.stdout,
             format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-            level="INFO",  # Hardcode for now to fix the issue
+            level="INFO",  # Hardcode for now to fix issue
         )
 
         # Add file logging if specified

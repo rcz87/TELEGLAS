@@ -1,0 +1,117 @@
+{
+  "test_summary": {
+    "total_tests": 17,
+    "passed_tests": 12,
+    "failed_tests": 5,
+    "pass_rate": 0.7058823529411765,
+    "overall_success": true
+  },
+  "import_tests": {
+    "WebSocket Client": {
+      "status": "PASS",
+      "error": null
+    },
+    "Alert Engine": {
+      "status": "PASS",
+      "error": null
+    },
+    "Event Aggregator": {
+      "status": "PASS",
+      "error": null
+    },
+    "Global Radar Engine": {
+      "status": "PASS",
+      "error": null
+    },
+    "Config": {
+      "status": "PASS",
+      "error": null
+    },
+    "Authentication": {
+      "status": "PASS",
+      "error": null
+    },
+    "Performance Optimizer": {
+      "status": "PASS",
+      "error": null
+    },
+    "Enhanced Scoring Engine": {
+      "status": "PASS",
+      "error": null
+    },
+    "Error Handler": {
+      "status": "PASS",
+      "error": null
+    }
+  },
+  "functionality_tests": {
+    "WebSocket Client": {
+      "status": "PASS",
+      "error": null
+    },
+    "Alert Engine": {
+      "status": "PASS",
+      "error": null
+    },
+    "Event Aggregator": {
+      "status": "FAIL",
+      "error": "'EventAggregator' object has no attribute 'get_statistics'"
+    },
+    "Global Radar Engine": {
+      "status": "PASS",
+      "error": null
+    },
+    "Configuration": {
+      "status": "PASS",
+      "error": null
+    }
+  },
+  "performance_tests": {
+    "Event Processing Performance": {
+      "status": "FAIL",
+      "error": "'EventAggregator' object has no attribute 'get_statistics'"
+    },
+    "Alert Generation Performance": {
+      "status": "PASS",
+      "error": null,
+      "alerts_per_second": 1531.5616122223926
+    }
+  },
+  "security_tests": {
+    "Authentication Security": {
+      "status": "FAIL",
+      "error": "'AuthManager' object has no attribute 'generate_token'"
+    },
+    "Input Validation": {
+      "status": "PASS",
+      "error": null
+    }
+  },
+  "error_handling_tests": {
+    "Error Handling": {
+      "status": "PASS",
+      "error": null
+    }
+  },
+  "integration_tests": {
+    "WebSocket Flow Integration": {
+      "status": "FAIL",
+      "error": "'EventAggregator' object has no attribute 'get_statistics'"
+    },
+    "Alert Flow Integration": {
+      "status": "PASS",
+      "error": null
+    }
+  },
+  "enhanced_features_tests": {
+    "Performance Optimizer": {
+      "status": "FAIL",
+      "error": "'PerformanceOptimizer' object has no attribute 'get_performance_stats'"
+    },
+    "Enhanced Scoring Engine": {
+      "status": "PASS",
+      "error": null,
+      "score": 0.0
+    }
+  }
+}

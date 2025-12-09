@@ -1,0 +1,349 @@
+{
+  "test_summary": {
+    "total_tests": 33,
+    "passed_tests": 10,
+    "failed_tests": 23,
+    "pass_rate": 0.30303030303030304,
+    "total_execution_time": 1066.7532835006714,
+    "average_test_time": 32.24708289088625
+  },
+  "load_test_summary": {
+    "total_load_tests": 6,
+    "successful_load_tests": 5,
+    "total_requests": 11000,
+    "successful_requests": 1000,
+    "overall_success_rate": 0.09090909090909091,
+    "average_rps": 310353.7246979089,
+    "average_response_time": 0.8650747060775756
+  },
+  "test_results": [
+    {
+      "test_name": "WebSocket Client Test",
+      "status": "FAILED",
+      "execution_time": 0.22925996780395508,
+      "error_message": "cannot import name 'WebSocketClientManager' from 'ws_alert.ws_client' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\ws_client.py)",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Alert Engine Test",
+      "status": "FAILED",
+      "execution_time": 18.22009515762329,
+      "error_message": "cannot import name 'AlertEngine' from 'ws_alert.alert_engine' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\alert_engine.py)",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Event Aggregator Test",
+      "status": "FAILED",
+      "execution_time": 0.01578664779663086,
+      "error_message": "'EventAggregator' object has no attribute 'process_event'",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Global Radar Engine Test",
+      "status": "FAILED",
+      "execution_time": 0.06426644325256348,
+      "error_message": "'GlobalRadarEngine' object has no attribute 'process_market_data'",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Liquidation Storm Detector Test",
+      "status": "FAILED",
+      "execution_time": 0.0,
+      "error_message": "'LiquidationStormDetector' object has no attribute 'process_liquidation'",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Whale Cluster Detector Test",
+      "status": "FAILED",
+      "execution_time": 0.0,
+      "error_message": "'WhaleClusterDetector' object has no attribute 'process_whale_trade'",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Authentication & Security Test",
+      "status": "FAILED",
+      "execution_time": 0.2765347957611084,
+      "error_message": "cannot import name 'AuthSecurityManager' from 'ws_alert.auth_security' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\auth_security.py)",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Performance Optimizer Test",
+      "status": "FAILED",
+      "execution_time": 0.3441622257232666,
+      "error_message": "unsupported operand type(s) for *: 'dict' and 'int'",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Enhanced Scoring Engine Test",
+      "status": "FAILED",
+      "execution_time": 0.026369094848632812,
+      "error_message": "'EnhancedScoringEngine' object has no attribute 'calculate_score'",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Error Handler Test",
+      "status": "PASSED",
+      "execution_time": 3.0046539306640625,
+      "error_message": null,
+      "performance_metrics": {
+        "error_handling_time": 0.01,
+        "circuit_breaker_init_time": 0.005,
+        "errors_handled": 1
+      }
+    },
+    {
+      "test_name": "WebSocket Flow Integration",
+      "status": "FAILED",
+      "execution_time": 0.0,
+      "error_message": "cannot import name 'WebSocketClientManager' from 'ws_alert.ws_client' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\ws_client.py)",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Alert Engine Integration",
+      "status": "FAILED",
+      "execution_time": 0.0,
+      "error_message": "cannot import name 'AlertEngine' from 'ws_alert.alert_engine' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\alert_engine.py)",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Database Integration",
+      "status": "PASSED",
+      "execution_time": 0.30886387825012207,
+      "error_message": null,
+      "performance_metrics": {
+        "db_connection_time": 0.05,
+        "query_time": 0.02,
+        "operations_completed": 3
+      }
+    },
+    {
+      "test_name": "Configuration Integration",
+      "status": "PASSED",
+      "execution_time": 0.0,
+      "error_message": null,
+      "performance_metrics": {
+        "config_load_time": 0.01,
+        "validation_time": 0.005,
+        "symbols_configured": 3
+      }
+    },
+    {
+      "test_name": "Multi-provider Integration",
+      "status": "PASSED",
+      "execution_time": 0.0,
+      "error_message": null,
+      "performance_metrics": {
+        "connection_time": 0.2,
+        "providers_connected": 3,
+        "success_rate": 1.0
+      }
+    },
+    {
+      "test_name": "Error Handling Integration",
+      "status": "PASSED",
+      "execution_time": 2.005096435546875,
+      "error_message": null,
+      "performance_metrics": {
+        "error_handling_time": 0.05,
+        "errors_handled": 3,
+        "success_rate": 1.0
+      }
+    },
+    {
+      "test_name": "Performance Integration",
+      "status": "FAILED",
+      "execution_time": 0.060964107513427734,
+      "error_message": "'EnhancedEventAggregator' object has no attribute 'process_event'",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Security Integration",
+      "status": "FAILED",
+      "execution_time": 0.0,
+      "error_message": "cannot import name 'AuthSecurityManager' from 'ws_alert.auth_security' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\auth_security.py)",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "WebSocket Latency Benchmark",
+      "status": "PASSED",
+      "execution_time": 1.7809367179870605,
+      "error_message": null,
+      "performance_metrics": {
+        "avg_latency_ms": 1.7809367179870605,
+        "p95_latency_ms": 1.9719600677490234,
+        "p99_latency_ms": 1.9981861114501953,
+        "min_latency_ms": 1.1241436004638672,
+        "max_latency_ms": 4.874944686889648,
+        "messages_tested": 1000
+      }
+    },
+    {
+      "test_name": "Alert Processing Benchmark",
+      "status": "FAILED",
+      "execution_time": 0.0,
+      "error_message": "cannot import name 'AlertEngine' from 'ws_alert.alert_engine' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\alert_engine.py)",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Database Query Benchmark",
+      "status": "PASSED",
+      "execution_time": 2.827122449874878,
+      "error_message": null,
+      "performance_metrics": {
+        "avg_query_time_ms": 2.8200936317443848,
+        "queries_per_second": 354.5981554454433,
+        "total_queries": 1000,
+        "p95_query_time_ms": 3.0183792114257812
+      }
+    },
+    {
+      "test_name": "Memory Usage Benchmark",
+      "status": "FAILED",
+      "execution_time": 0.15746784210205078,
+      "error_message": "cannot access local variable 'data' where it is not associated with a value",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "CPU Usage Benchmark",
+      "status": "PASSED",
+      "execution_time": 0.05399799346923828,
+      "error_message": null,
+      "performance_metrics": {
+        "cpu_usage_percent": 100.8,
+        "processing_time_seconds": 0.05399799346923828,
+        "operations_per_second": 18519206.65477473,
+        "cpu_efficiency": 183722.2882418128
+      }
+    },
+    {
+      "test_name": "Throughput Benchmark",
+      "status": "FAILED",
+      "execution_time": 0.0,
+      "error_message": "'EnhancedEventAggregator' object has no attribute 'process_event'",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Connection Stress Test",
+      "status": "FAILED",
+      "execution_time": 0.0,
+      "error_message": "cannot import name 'WebSocketClientManager' from 'ws_alert.ws_client' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\ws_client.py)",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Data Volume Stress Test",
+      "status": "FAILED",
+      "execution_time": 0.12587213516235352,
+      "error_message": "Unknown error",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Error Recovery Stress Test",
+      "status": "PASSED",
+      "execution_time": 1032.3841423988342,
+      "error_message": null,
+      "performance_metrics": {
+        "total_errors": 1000,
+        "recovered_errors": 1000,
+        "recovery_rate": 1.0,
+        "stress_test_passed": true
+      }
+    },
+    {
+      "test_name": "Resource Exhaustion Test",
+      "status": "FAILED",
+      "execution_time": 1.2837398052215576,
+      "error_message": "unsupported operand type(s) for *: 'dict' and 'int'",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Authentication Security Test",
+      "status": "FAILED",
+      "execution_time": 0.9171743392944336,
+      "error_message": "cannot import name 'AuthSecurityManager' from 'ws_alert.auth_security' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\auth_security.py)",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Data Privacy Test",
+      "status": "FAILED",
+      "execution_time": 0.0,
+      "error_message": "cannot import name 'AuthSecurityManager' from 'ws_alert.auth_security' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\auth_security.py)",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "API Key Security Test",
+      "status": "FAILED",
+      "execution_time": 0.0,
+      "error_message": "cannot import name 'AuthSecurityManager' from 'ws_alert.auth_security' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\auth_security.py)",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Rate Limiting Test",
+      "status": "FAILED",
+      "execution_time": 0.0,
+      "error_message": "cannot import name 'AuthSecurityManager' from 'ws_alert.auth_security' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\auth_security.py)",
+      "performance_metrics": null
+    },
+    {
+      "test_name": "Input Validation Test",
+      "status": "PASSED",
+      "execution_time": 0.06722903251647949,
+      "error_message": null,
+      "performance_metrics": {
+        "total_tests": 8,
+        "passed_tests": 7,
+        "validation_accuracy": 0.875,
+        "security_test_passed": true
+      }
+    }
+  ],
+  "load_test_results": [
+    {
+      "test_name": "High Frequency Data Load",
+      "total_requests": 10000,
+      "successful_requests": 0,
+      "requests_per_second": 620128.9254243303,
+      "error_rate": 100.0,
+      "average_response_time": 0.0016125679016113282
+    },
+    {
+      "test_name": "Concurrent WebSocket Load",
+      "total_requests": 0,
+      "successful_requests": 0,
+      "requests_per_second": 0,
+      "error_rate": 0,
+      "average_response_time": 0
+    },
+    {
+      "test_name": "Database Load Test",
+      "total_requests": 1000,
+      "successful_requests": 1000,
+      "requests_per_second": 578.5239714874837,
+      "error_rate": 0.0,
+      "average_response_time": 1.72853684425354
+    },
+    {
+      "test_name": "Memory Stress Test",
+      "total_requests": 0,
+      "successful_requests": 0,
+      "requests_per_second": 0,
+      "error_rate": 0,
+      "average_response_time": 0
+    },
+    {
+      "test_name": "API Rate Limit Load",
+      "total_requests": 0,
+      "successful_requests": 0,
+      "requests_per_second": 0,
+      "error_rate": 0,
+      "average_response_time": 0
+    },
+    {
+      "test_name": "Alert Generation Load",
+      "total_requests": 0,
+      "successful_requests": 0,
+      "requests_per_second": 0,
+      "error_rate": 0,
+      "average_response_time": 0
+    }
+  ]
+}

@@ -1,0 +1,95 @@
+{
+  "test_summary": {
+    "total_tests": 15,
+    "passed_tests": 7,
+    "failed_tests": 8,
+    "pass_rate": 0.4666666666666667,
+    "overall_success": false
+  },
+  "import_tests": {
+    "WebSocket Client": {
+      "status": "PASS",
+      "error": null
+    },
+    "Alert Engine": {
+      "status": "PASS",
+      "error": null
+    },
+    "Event Aggregator": {
+      "status": "PASS",
+      "error": null
+    },
+    "Global Radar Engine": {
+      "status": "PASS",
+      "error": null
+    },
+    "Config": {
+      "status": "PASS",
+      "error": null
+    },
+    "Authentication": {
+      "status": "PASS",
+      "error": null
+    },
+    "Performance Optimizer": {
+      "status": "PASS",
+      "error": null
+    },
+    "Enhanced Scoring Engine": {
+      "status": "PASS",
+      "error": null
+    },
+    "Error Handler": {
+      "status": "PASS",
+      "error": null
+    }
+  },
+  "functionality_tests": {
+    "WebSocket Client": {
+      "status": "FAIL",
+      "error": "cannot import name 'WebSocketClientManager' from 'ws_alert.ws_client' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\ws_client.py)"
+    },
+    "Alert Engine": {
+      "status": "FAIL",
+      "error": "cannot import name 'AlertEngine' from 'ws_alert.alert_engine' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\alert_engine.py)"
+    },
+    "Event Aggregator": {
+      "status": "FAIL",
+      "error": "'EventAggregator' object has no attribute 'process_event'"
+    },
+    "Global Radar Engine": {
+      "status": "FAIL",
+      "error": "'GlobalRadarEngine' object has no attribute 'process_market_data'"
+    },
+    "Configuration": {
+      "status": "PASS",
+      "error": null
+    }
+  },
+  "performance_tests": {
+    "Event Processing Performance": {
+      "status": "FAIL",
+      "error": "'EventAggregator' object has no attribute 'process_event'"
+    },
+    "Alert Generation Performance": {
+      "status": "FAIL",
+      "error": "cannot import name 'AlertEngine' from 'ws_alert.alert_engine' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\alert_engine.py)"
+    }
+  },
+  "security_tests": {
+    "Authentication Security": {
+      "status": "FAIL",
+      "error": "cannot import name 'AuthSecurityManager' from 'ws_alert.auth_security' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\auth_security.py)"
+    },
+    "Input Validation": {
+      "status": "FAIL",
+      "error": "cannot import name 'AuthSecurityManager' from 'ws_alert.auth_security' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\auth_security.py)"
+    }
+  },
+  "error_handling_tests": {
+    "Error Handling": {
+      "status": "PASS",
+      "error": null
+    }
+  }
+}

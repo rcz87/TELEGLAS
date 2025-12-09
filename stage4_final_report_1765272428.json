@@ -1,0 +1,115 @@
+{
+  "test_summary": {
+    "total_tests": 17,
+    "passed_tests": 9,
+    "failed_tests": 8,
+    "pass_rate": 0.5294117647058824,
+    "overall_success": false
+  },
+  "import_tests": {
+    "WebSocket Client": {
+      "status": "PASS",
+      "error": null
+    },
+    "Alert Engine": {
+      "status": "PASS",
+      "error": null
+    },
+    "Event Aggregator": {
+      "status": "PASS",
+      "error": null
+    },
+    "Global Radar Engine": {
+      "status": "PASS",
+      "error": null
+    },
+    "Config": {
+      "status": "PASS",
+      "error": null
+    },
+    "Authentication": {
+      "status": "PASS",
+      "error": null
+    },
+    "Performance Optimizer": {
+      "status": "PASS",
+      "error": null
+    },
+    "Enhanced Scoring Engine": {
+      "status": "PASS",
+      "error": null
+    },
+    "Error Handler": {
+      "status": "PASS",
+      "error": null
+    }
+  },
+  "functionality_tests": {
+    "WebSocket Client": {
+      "status": "PASS",
+      "error": null
+    },
+    "Alert Engine": {
+      "status": "PASS",
+      "error": null
+    },
+    "Event Aggregator": {
+      "status": "FAIL",
+      "error": "'EventAggregator' object has no attribute 'get_statistics'"
+    },
+    "Global Radar Engine": {
+      "status": "PASS",
+      "error": null
+    },
+    "Configuration": {
+      "status": "PASS",
+      "error": null
+    }
+  },
+  "performance_tests": {
+    "Event Processing Performance": {
+      "status": "FAIL",
+      "error": "'EventAggregator' object has no attribute 'get_statistics'"
+    },
+    "Alert Generation Performance": {
+      "status": "FAIL",
+      "error": "cannot import name 'calculate_signal_score' from 'ws_alert.enhanced_scoring_engine' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\enhanced_scoring_engine.py)"
+    }
+  },
+  "security_tests": {
+    "Authentication Security": {
+      "status": "FAIL",
+      "error": "'AuthManager' object has no attribute 'generate_token'"
+    },
+    "Input Validation": {
+      "status": "PASS",
+      "error": null
+    }
+  },
+  "error_handling_tests": {
+    "Error Handling": {
+      "status": "PASS",
+      "error": null
+    }
+  },
+  "integration_tests": {
+    "WebSocket Flow Integration": {
+      "status": "FAIL",
+      "error": "'EventAggregator' object has no attribute 'get_statistics'"
+    },
+    "Alert Flow Integration": {
+      "status": "FAIL",
+      "error": "cannot import name 'calculate_signal_score' from 'ws_alert.enhanced_scoring_engine' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\enhanced_scoring_engine.py)"
+    }
+  },
+  "enhanced_features_tests": {
+    "Performance Optimizer": {
+      "status": "FAIL",
+      "error": "'PerformanceOptimizer' object has no attribute 'get_performance_stats'"
+    },
+    "Enhanced Scoring Engine": {
+      "status": "FAIL",
+      "error": "cannot import name 'calculate_signal_score' from 'ws_alert.enhanced_scoring_engine' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\enhanced_scoring_engine.py)"
+    }
+  }
+}

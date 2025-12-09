@@ -1,0 +1,105 @@
+{
+  "test_summary": {
+    "total_tests": 17,
+    "passed_tests": 8,
+    "failed_tests": 9,
+    "pass_rate": 0.47058823529411764,
+    "overall_success": false
+  },
+  "import_tests": {
+    "WebSocket Client": {
+      "status": "PASS",
+      "error": null
+    },
+    "Alert Engine": {
+      "status": "PASS",
+      "error": null
+    },
+    "Event Aggregator": {
+      "status": "PASS",
+      "error": null
+    },
+    "Global Radar Engine": {
+      "status": "PASS",
+      "error": null
+    },
+    "Config": {
+      "status": "PASS",
+      "error": null
+    },
+    "Authentication": {
+      "status": "PASS",
+      "error": null
+    },
+    "Performance Optimizer": {
+      "status": "PASS",
+      "error": null
+    },
+    "Enhanced Scoring Engine": {
+      "status": "PASS",
+      "error": null
+    },
+    "Error Handler": {
+      "status": "PASS",
+      "error": null
+    }
+  },
+  "functionality_tests": {
+    "WebSocket Client": {
+      "status": "PASS",
+      "error": null
+    },
+    "Alert Engine": {
+      "status": "FAIL",
+      "error": "cannot import name 'process_alert' from 'ws_alert.alert_engine' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\alert_engine.py)"
+    },
+    "Event Aggregator": {
+      "status": "FAIL",
+      "error": "cannot import name 'aggregate_events' from 'ws_alert.event_aggregator' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\event_aggregator.py)"
+    },
+    "Global Radar Engine": {
+      "status": "FAIL",
+      "error": "cannot import name 'analyze_market_data' from 'ws_alert.global_radar_engine' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\global_radar_engine.py)"
+    },
+    "Configuration": {
+      "status": "PASS",
+      "error": null
+    }
+  },
+  "performance_tests": {
+    "Event Processing Performance": {
+      "status": "FAIL",
+      "error": "cannot import name 'aggregate_events' from 'ws_alert.event_aggregator' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\event_aggregator.py)"
+    },
+    "Alert Generation Performance": {
+      "status": "FAIL",
+      "error": "cannot import name 'process_alert' from 'ws_alert.alert_engine' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\alert_engine.py)"
+    }
+  },
+  "security_tests": {
+    "Authentication Security": {
+      "status": "FAIL",
+      "error": "cannot import name 'authenticate_request' from 'ws_alert.auth_security' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\auth_security.py)"
+    },
+    "Input Validation": {
+      "status": "FAIL",
+      "error": "cannot import name 'validate_input' from 'ws_alert.auth_security' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\auth_security.py)"
+    }
+  },
+  "error_handling_tests": {
+    "Error Handling": {
+      "status": "PASS",
+      "error": null
+    }
+  },
+  "integration_tests": {
+    "WebSocket Flow Integration": {
+      "status": "FAIL",
+      "error": "cannot import name 'aggregate_events' from 'ws_alert.event_aggregator' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\event_aggregator.py)"
+    },
+    "Alert Flow Integration": {
+      "status": "FAIL",
+      "error": "cannot import name 'process_alert' from 'ws_alert.alert_engine' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\alert_engine.py)"
+    }
+  }
+}
