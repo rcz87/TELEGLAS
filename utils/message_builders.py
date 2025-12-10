@@ -379,14 +379,21 @@ async def build_raw_orderbook_message(symbol: str, exchange: str = "Binance") ->
         # If no meaningful data is available, return fallback message
         if not (has_snapshot_data or has_binance_depth or has_aggregated_depth):
             logger.warning(f"[RAW_ORDERBOOK_BUILDER] No orderbook data available for {symbol}")
-            return f"""[RAW ORDERBOOK - {symbol}]
+            return f"""❌ Orderbook Data Unavailable
 
-Orderbook data tidak tersedia untuk simbol ini saat ini.
-Kemungkinan:
-• Pair ini belum didukung penuh oleh endpoint orderbook.
-• Data orderbook untuk simbol ini sedang kosong.
+Orderbook data is temporarily unavailable for `{symbol}`.
 
-Coba gunakan /raw {symbol} untuk melihat data pasar umumnya."""
+**What happened:**
+• CoinGlass orderbook API may be experiencing delays
+• This symbol might have limited orderbook support
+• Market data temporarily unavailable
+
+**Try these alternatives:**
+• /raw {symbol} → General market data (always available)
+• /raw_orderbook BTC → Try with major symbols
+• Wait 30 seconds and retry
+
+💡 Best results: Orderbook works best with BTC, ETH, SOL futures"""
         
         # Format using existing formatter
         message = build_raw_orderbook_text_enhanced(orderbook_data)

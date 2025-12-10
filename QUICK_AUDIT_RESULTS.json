@@ -1,0 +1,115 @@
+{
+  "timestamp": "2025-12-10T10:12:18.266595",
+  "test_symbols": [
+    "BTC",
+    "ETH",
+    "SOL"
+  ],
+  "results": {
+    "funding_aggregation": {
+      "BTC": {
+        "success": false,
+        "error": "unsupported format string passed to NoneType.__format__"
+      },
+      "ETH": {
+        "success": false,
+        "error": "unsupported format string passed to NoneType.__format__"
+      },
+      "SOL": {
+        "success": false,
+        "error": "unsupported format string passed to NoneType.__format__"
+      }
+    },
+    "oi_aggregation": {
+      "BTC": {
+        "success": true,
+        "data_type": "exchange_breakdown_fallback",
+        "total_oi": 0.0,
+        "exchange_count": 0,
+        "is_aggregated": false
+      },
+      "ETH": {
+        "success": true,
+        "data_type": "exchange_breakdown_fallback",
+        "total_oi": 0.0,
+        "exchange_count": 0,
+        "is_aggregated": false
+      },
+      "SOL": {
+        "success": true,
+        "data_type": "exchange_breakdown_fallback",
+        "total_oi": 0.0,
+        "exchange_count": 0,
+        "is_aggregated": false
+      }
+    },
+    "liquidation_aggregation": {
+      "BTC": {
+        "success": true,
+        "data_type": "single_exchange_fallback",
+        "total_liquidations": 0.0,
+        "exchange_count": 0,
+        "is_aggregated": false
+      },
+      "ETH": {
+        "success": true,
+        "data_type": "single_exchange_fallback",
+        "total_liquidations": 0.0,
+        "exchange_count": 0,
+        "is_aggregated": false
+      },
+      "SOL": {
+        "success": true,
+        "data_type": "single_exchange_fallback",
+        "total_liquidations": 0.0,
+        "exchange_count": 0,
+        "is_aggregated": false
+      }
+    },
+    "raw_coverage": {
+      "BTC": {
+        "success": true,
+        "total_fields": 9,
+        "missing_fields": [],
+        "coverage_pct": 100.0,
+        "rsi_1h_4h_1d_available": false,
+        "rsi_values": {
+          "1h": null,
+          "4h": null,
+          "1d": null
+        }
+      },
+      "ETH": {
+        "success": true,
+        "total_fields": 9,
+        "missing_fields": [],
+        "coverage_pct": 100.0,
+        "rsi_1h_4h_1d_available": false,
+        "rsi_values": {
+          "1h": null,
+          "4h": null,
+          "1d": null
+        }
+      },
+      "SOL": {
+        "success": true,
+        "total_fields": 9,
+        "missing_fields": [],
+        "coverage_pct": 100.0,
+        "rsi_1h_4h_1d_available": false,
+        "rsi_values": {
+          "1h": null,
+          "4h": null,
+          "1d": null
+        }
+      }
+    }
+  },
+  "success_rate": {
+    "funding": "0/3",
+    "oi": "3/3",
+    "liquidations": "3/3",
+    "raw_coverage": "3/3",
+    "overall": "9/12 (75.0%)"
+  }
+}

@@ -231,11 +231,11 @@ def build_raw_orderbook_text(
         lines.append(f"[RAW ORDERBOOK - {symbol}]")
         lines.append("")
         
-        # Info Umum section
-        lines.append("Info Umum")
+        # General Information section
+        lines.append("General Information")
         lines.append(f"Exchange       : {exchange}")
         lines.append(f"Symbol         : {symbol}")
-        lines.append(f"Interval OB    : {ob_interval} (snapshot level)")
+        lines.append(f"Interval OB    : {interval_ob} (snapshot level)")
         lines.append(f"Depth Range    : {depth_range}")
         lines.append("")
         
@@ -375,8 +375,9 @@ def build_raw_orderbook_text(
                                 if price > 0 and qty > 0:
                                     top_asks.append(f"• {price:,.0f}   | {qty:.3f} BTC")
         
-        # Display top bids
-        lines.append("Top Bids (Pembeli)")
+        # Display top bids with explanation
+        lines.append("Top Bids (Buy Orders)")
+        lines.append("Note: Bids = Buy orders at specific price levels")
         if top_bids:
             for bid in top_bids:
                 lines.append(bid)
@@ -385,8 +386,9 @@ def build_raw_orderbook_text(
         
         lines.append("")
         
-        # Display top asks
-        lines.append("Top Asks (Penjual)")
+        # Display top asks with explanation
+        lines.append("Top Asks (Sell Orders)")
+        lines.append("Note: Asks = Sell orders at specific price levels")
         if top_asks:
             for ask in top_asks:
                 lines.append(ask)
@@ -1018,8 +1020,8 @@ def build_raw_orderbook_text_enhanced(orderbook_data: dict) -> str:
         lines.append(f"[RAW ORDERBOOK - {symbol}]")
         lines.append("")
         
-        # Info Umum section
-        lines.append("Info Umum")
+        # General Information section
+        lines.append("General Information")
         lines.append(f"Exchange       : {exchange}")
         lines.append(f"Symbol         : {symbol}")
         lines.append(f"Interval OB    : {interval_ob} (snapshot level)")
@@ -1035,9 +1037,10 @@ def build_raw_orderbook_text_enhanced(orderbook_data: dict) -> str:
         lines.append(f"Timestamp      : {timestamp}")
         lines.append("")
         
-        # Top bids
+        # Top bids with explanation
         top_bids = snapshot.get("top_bids", [])
-        lines.append("Top Bids (Pembeli)")
+        lines.append("Top Bids (Buy Orders)")
+        lines.append("Note: Bids = Buy orders at specific price levels")
         if top_bids:
             for i, bid in enumerate(top_bids[:5], 1):
                 if isinstance(bid, list) and len(bid) >= 2:
@@ -1054,9 +1057,10 @@ def build_raw_orderbook_text_enhanced(orderbook_data: dict) -> str:
         
         lines.append("")
         
-        # Top asks
+        # Top asks with explanation
         top_asks = snapshot.get("top_asks", [])
-        lines.append("Top Asks (Penjual)")
+        lines.append("Top Asks (Sell Orders)")
+        lines.append("Note: Asks = Sell orders at specific price levels")
         if top_asks:
             for i, ask in enumerate(top_asks[:5], 1):
                 if isinstance(ask, list) and len(ask) >= 2:

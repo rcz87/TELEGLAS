@@ -307,13 +307,13 @@ class CoinGlassAPI:
             return {"success": False, "data": []}
 
     async def get_liquidation_aggregated_history(self, symbol: str, exchanges: str = "Binance,OKX,Bybit", interval: str = "1d") -> Dict[str, Any]:
-        """Get liquidation aggregated history for better liquidation data"""
+        """Get liquidation aggregated history for better liquidation data - FIXED without limit parameter"""
         try:
             params = {
                 "symbol": symbol,
                 "exchange_list": exchanges,
-                "interval": interval,
-                "limit": 100
+                "interval": interval
+                # REMOVED: limit parameter (not supported by this endpoint)
             }
             result = await self._make_request("/api/futures/liquidation/aggregated-history", params)
             if not result.get("success"):
@@ -680,13 +680,14 @@ class CoinGlassAPI:
         start_time: Optional[int] = None,
         end_time: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Get aggregated OI OHLC history"""
+        """Get aggregated OI OHLC history - FIXED without limit parameter"""
         try:
             params = {"symbol": symbol, "interval": interval}
             if start_time:
                 params["startTime"] = start_time
             if end_time:
                 params["endTime"] = end_time
+            # REMOVED: limit parameter (not supported by this endpoint)
             result = await self._make_request("/api/futures/openInterest/ohlc-aggregated-history", params)
             if not result.get("success"):
                 logger.error(f"[COINGLASS] Failed endpoint /api/futures/openInterest/ohlc-aggregated-history reason: {result.get('error')}")

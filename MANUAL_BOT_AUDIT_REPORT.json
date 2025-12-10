@@ -1,0 +1,215 @@
+{
+  "audit_timestamp": "2025-12-10T10:11:11.749349",
+  "audit_version": "1.0.0",
+  "test_symbols": [
+    "BTC",
+    "ETH",
+    "SOL"
+  ],
+  "summary": {
+    "total_phases": 5,
+    "completed_phases": 4,
+    "overall_status": "completed"
+  },
+  "detailed_results": {
+    "phase_1_data_mapping": {
+      "BTC": {
+        "symbol": "BTC",
+        "has_error": false,
+        "data_keys": [
+          "symbol",
+          "timestamp",
+          "general_info",
+          "price_change",
+          "open_interest",
+          "volume",
+          "funding",
+          "liquidations",
+          "long_short_ratio",
+          "taker_flow",
+          "rsi",
+          "rsi_1h_4h_1d",
+          "cg_levels",
+          "orderbook"
+        ],
+        "missing_critical_keys": [],
+        "funding_source": "single_exchange",
+        "oi_source": "single_value",
+        "liquidation_source": "single_exchange"
+      },
+      "ETH": {
+        "symbol": "ETH",
+        "has_error": false,
+        "data_keys": [
+          "symbol",
+          "timestamp",
+          "general_info",
+          "price_change",
+          "open_interest",
+          "volume",
+          "funding",
+          "liquidations",
+          "long_short_ratio",
+          "taker_flow",
+          "rsi",
+          "rsi_1h_4h_1d",
+          "cg_levels",
+          "orderbook"
+        ],
+        "missing_critical_keys": [],
+        "funding_source": "single_exchange",
+        "oi_source": "single_value",
+        "liquidation_source": "single_exchange"
+      },
+      "SOL": {
+        "symbol": "SOL",
+        "has_error": false,
+        "data_keys": [
+          "symbol",
+          "timestamp",
+          "general_info",
+          "price_change",
+          "open_interest",
+          "volume",
+          "funding",
+          "liquidations",
+          "long_short_ratio",
+          "taker_flow",
+          "rsi",
+          "rsi_1h_4h_1d",
+          "cg_levels",
+          "orderbook"
+        ],
+        "missing_critical_keys": [],
+        "funding_source": "single_exchange",
+        "oi_source": "single_value",
+        "liquidation_source": "single_exchange"
+      }
+    },
+    "phase_2_aggregation": {
+      "BTC": {
+        "symbol": "BTC",
+        "funding_aggregation": {
+          "status": "aggregated",
+          "exchange_count": 0,
+          "has_weighted_average": false,
+          "by_exchange": {
+            "Binance": null
+          }
+        },
+        "oi_aggregation": {
+          "status": "single_value"
+        },
+        "liquidation_aggregation": {
+          "status": "single_exchange",
+          "entry_count": 0
+        }
+      },
+      "ETH": {
+        "symbol": "ETH",
+        "funding_aggregation": {
+          "status": "aggregated",
+          "exchange_count": 0,
+          "has_weighted_average": false,
+          "by_exchange": {
+            "Binance": null
+          }
+        },
+        "oi_aggregation": {
+          "status": "single_value"
+        },
+        "liquidation_aggregation": {
+          "status": "single_exchange",
+          "entry_count": 0
+        }
+      },
+      "SOL": {
+        "symbol": "SOL",
+        "funding_aggregation": {
+          "status": "aggregated",
+          "exchange_count": 0,
+          "has_weighted_average": false,
+          "by_exchange": {
+            "Binance": null
+          }
+        },
+        "oi_aggregation": {
+          "status": "single_value"
+        },
+        "liquidation_aggregation": {
+          "status": "single_exchange",
+          "entry_count": 0
+        }
+      }
+    },
+    "phase_3_field_coverage": {
+      "BTC": {
+        "total_fields": 14,
+        "critical_fields_present": 9,
+        "critical_fields_missing": [],
+        "fields_with_null": [
+          "general_info",
+          "price_change",
+          "open_interest",
+          "volume",
+          "funding",
+          "liquidations",
+          "rsi_1h_4h_1d"
+        ],
+        "overall_completeness": 100.0
+      },
+      "ETH": {
+        "total_fields": 14,
+        "critical_fields_present": 9,
+        "critical_fields_missing": [],
+        "fields_with_null": [
+          "general_info",
+          "price_change",
+          "open_interest",
+          "volume",
+          "funding",
+          "liquidations",
+          "rsi_1h_4h_1d"
+        ],
+        "overall_completeness": 100.0
+      },
+      "SOL": {
+        "total_fields": 14,
+        "critical_fields_present": 9,
+        "critical_fields_missing": [],
+        "fields_with_null": [
+          "general_info",
+          "price_change",
+          "open_interest",
+          "volume",
+          "funding",
+          "liquidations",
+          "rsi_1h_4h_1d"
+        ],
+        "overall_completeness": 100.0
+      }
+    },
+    "phase_4_consistency": {
+      "error": "cannot import name 'SYMBOL_GROUPS' from 'ws_alert.config' (c:\\Users\\client\\Desktop\\RICOZ87\\TELEGLAS\\ws_alert\\config.py)"
+    },
+    "phase_5_testing": {
+      "command_tests": {
+        "BTC": {
+          "error": "'RawDataService' object has no attribute 'format_for_telegram'"
+        },
+        "ETH": {
+          "error": "'RawDataService' object has no attribute 'format_for_telegram'"
+        },
+        "SOL": {
+          "error": "'RawDataService' object has no attribute 'format_for_telegram'"
+        }
+      },
+      "logging_tests": {
+        "logger_configured": true,
+        "has_file_handlers": true,
+        "debug_level_available": true,
+        "structured_logging": true
+      }
+    }
+  }
+}
