@@ -1,0 +1,86 @@
+# TELEGLAS GPT API Requirements
+# Core dependencies for FastAPI and market data service
+
+# Web Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# Data Validation and Serialization
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# HTTP Client
+httpx==0.25.2
+aiohttp==3.9.1
+
+# Async Support
+asyncio-throttle==1.0.2
+async-timeout==4.0.3
+
+# Logging and Monitoring
+loguru==0.7.2
+
+# Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
+
+# CORS Support
+python-cors==1.7.0
+
+# Data Processing
+pandas==2.1.4
+numpy==1.25.2
+
+# Date/Time Handling
+python-dateutil==2.8.2
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# Rate Limiting
+slowapi==0.1.9
+
+# Cache Support
+aioredis==2.0.1
+redis==5.0.1
+
+# GraphQL Support
+strawberry-graphql[fastapi]==0.215.1
+
+# Webhook Support
+aiohttp-retry==2.8.3
+
+# Additional Exchange Support
+python-binance==1.0.19
+ccxt==4.1.90
+
+# Analytics
+psutil==5.9.6
+
+# JSON Processing
+orjson==3.9.10
+
+# Validation
+email-validator==2.1.0
+
+# Development and Testing (optional)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+httpx==0.25.2
+
+# Performance Monitoring
+psutil==5.9.6
+
+# Type Checking (optional)
+mypy==1.7.1
+
+# Code Formatting (optional)
+black==23.11.0
+isort==5.12.0
+flake8==6.1.0
+
+# Documentation (optional)
+mkdocs==1.5.3
+mkdocs-material==9.4.8

@@ -1,0 +1,98 @@
+{
+  "audit_timestamp": "2025-12-10T14:50:01.537912",
+  "auditor": "RawSimpleAuditor",
+  "version": "1.0",
+  "audit_results": {
+    "command_handler": {
+      "has_raw_command": true,
+      "uses_raw_data_service": true,
+      "symbol_validation": true,
+      "symbol_resolution": false,
+      "error_handling": true,
+      "hardcoded_symbols": true,
+      "pagination_limits": true,
+      "array_slicing": true,
+      "coin_check": false,
+      "raw_method_lines": 587,
+      "raw_method_uses_resolve": false,
+      "raw_method_error_handling": true,
+      "uses_comprehensive_data": true
+    },
+    "raw_data_service": {
+      "has_get_comprehensive": true,
+      "uses_resolve_symbol": true,
+      "symbol_not_supported": true,
+      "fallback_mechanism": true,
+      "uses_coinglass_api": true,
+      "handles_all_symbols": true,
+      "has_pagination": false,
+      "has_hardcoded_limit": true,
+      "endpoints_called": [
+        "futures_coins_markets",
+        "open_interest_aggregated",
+        "liquidation_aggregated",
+        "funding_rate_exchange_list",
+        "global_long_short_ratio"
+      ],
+      "method_lines": 711
+    },
+    "coinglass_api": {
+      "has_resolve_symbol": true,
+      "has_supported_coins": true,
+      "has_symbol_cache": true,
+      "has_ttl_cache": true,
+      "handles_all_symbols": true,
+      "no_hardcoded_limits": true,
+      "dynamic_symbol_handling": true,
+      "symbol_normalization": true,
+      "fallback_handling": true
+    },
+    "limitations": {
+      "command_limitations": [
+        "No symbol resolution mechanism",
+        "Uses hardcoded symbols",
+        "Has pagination limits"
+      ],
+      "service_limitations": [
+        "Has hardcoded limits"
+      ],
+      "api_limitations": [],
+      "overall_assessment": "FAIR - Some limitations"
+    },
+    "multi_coin_support": {
+      "supports_dynamic_symbols": false,
+      "symbol_resolution_works": true,
+      "no_hardcoded_limits": false,
+      "comprehensive_data_aggregation": false,
+      "handles_all_coinglass_symbols": true,
+      "final_verdict": "POOR - Very limited multi-coin support"
+    }
+  },
+  "summary": {
+    "final_verdict": "POOR - Very limited multi-coin support",
+    "supports_dynamic_symbols": false,
+    "symbol_resolution_works": true,
+    "no_hardcoded_limits": false,
+    "comprehensive_data_aggregation": false,
+    "handles_all_coinglass_symbols": true,
+    "total_limitations": 4,
+    "overall_assessment": "FAIR - Some limitations"
+  },
+  "recommendations": [
+    {
+      "priority": "HIGH",
+      "issue": "No dynamic symbol support",
+      "recommendation": "Implement dynamic symbol resolution mechanism"
+    },
+    {
+      "priority": "MEDIUM",
+      "issue": "Hardcoded limitations detected",
+      "recommendation": "Remove hardcoded limits and use dynamic configuration"
+    },
+    {
+      "priority": "MEDIUM",
+      "issue": "Limited data aggregation",
+      "recommendation": "Improve data aggregation from multiple endpoints"
+    }
+  ]
+}

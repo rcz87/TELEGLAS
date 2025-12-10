@@ -1,0 +1,301 @@
+{
+  "audit_timestamp": "2025-12-10T14:43:16.697801",
+  "auditor": "RawMultiCoinAuditor",
+  "version": "1.0",
+  "summary": {
+    "coinglass_supports_symbols": 0,
+    "symbol_resolution_success_rate": 0.0,
+    "raw_command_success_rate": 100.0,
+    "avg_data_completeness": 100.0,
+    "avg_response_time": 6.832104206085205,
+    "endpoint_supported_coins": 0,
+    "endpoint_coins_markets": 0
+  },
+  "detailed_results": {
+    "symbol_resolution": {
+      "results": {
+        "BTC": {
+          "resolved": null,
+          "success": false,
+          "original": "BTC"
+        },
+        "ETH": {
+          "resolved": null,
+          "success": false,
+          "original": "ETH"
+        },
+        "SOL": {
+          "resolved": null,
+          "success": false,
+          "original": "SOL"
+        },
+        "BNB": {
+          "resolved": null,
+          "success": false,
+          "original": "BNB"
+        },
+        "ADA": {
+          "resolved": null,
+          "success": false,
+          "original": "ADA"
+        },
+        "DOT": {
+          "resolved": null,
+          "success": false,
+          "original": "DOT"
+        },
+        "AVAX": {
+          "resolved": null,
+          "success": false,
+          "original": "AVAX"
+        },
+        "MATIC": {
+          "resolved": null,
+          "success": false,
+          "original": "MATIC"
+        },
+        "LINK": {
+          "resolved": null,
+          "success": false,
+          "original": "LINK"
+        },
+        "UNI": {
+          "resolved": null,
+          "success": false,
+          "original": "UNI"
+        },
+        "BTCUSDT": {
+          "resolved": null,
+          "success": false,
+          "original": "BTCUSDT"
+        },
+        "ETHUSDT": {
+          "resolved": null,
+          "success": false,
+          "original": "ETHUSDT"
+        },
+        "SOLUSDT": {
+          "resolved": null,
+          "success": false,
+          "original": "SOLUSDT"
+        },
+        "BTCUSD": {
+          "resolved": null,
+          "success": false,
+          "original": "BTCUSD"
+        },
+        "ETHUSD": {
+          "resolved": null,
+          "success": false,
+          "original": "ETHUSD"
+        },
+        "btc": {
+          "resolved": null,
+          "success": false,
+          "original": "btc"
+        },
+        "eth": {
+          "resolved": null,
+          "success": false,
+          "original": "eth"
+        },
+        "sol": {
+          "resolved": null,
+          "success": false,
+          "original": "sol"
+        },
+        "bnb": {
+          "resolved": null,
+          "success": false,
+          "original": "bnb"
+        },
+        "DOGE": {
+          "resolved": null,
+          "success": false,
+          "original": "DOGE"
+        },
+        "SHIB": {
+          "resolved": null,
+          "success": false,
+          "original": "SHIB"
+        },
+        "PEPE": {
+          "resolved": null,
+          "success": false,
+          "original": "PEPE"
+        },
+        "1000PEPE": {
+          "resolved": null,
+          "success": false,
+          "original": "1000PEPE"
+        },
+        "WIF": {
+          "resolved": null,
+          "success": false,
+          "original": "WIF"
+        },
+        "BONK": {
+          "resolved": null,
+          "success": false,
+          "original": "BONK"
+        },
+        "FTM": {
+          "resolved": null,
+          "success": false,
+          "original": "FTM"
+        },
+        "ATOM": {
+          "resolved": null,
+          "success": false,
+          "original": "ATOM"
+        },
+        "NEAR": {
+          "resolved": null,
+          "success": false,
+          "original": "NEAR"
+        },
+        "ALGO": {
+          "resolved": null,
+          "success": false,
+          "original": "ALGO"
+        },
+        "QNT": {
+          "resolved": null,
+          "success": false,
+          "original": "QNT"
+        },
+        "MINA": {
+          "resolved": null,
+          "success": false,
+          "original": "MINA"
+        },
+        "ROSE": {
+          "resolved": null,
+          "success": false,
+          "original": "ROSE"
+        }
+      },
+      "success_rate": 0.0,
+      "total_tested": 32,
+      "successful": 0
+    },
+    "raw_command_test": {
+      "results": {
+        "ETH": {
+          "success": true,
+          "error": null,
+          "response_time": 6.8931756019592285,
+          "data_completeness": 100.0,
+          "has_data": false,
+          "symbol_in_response": "ETH",
+          "timestamp": "2025-12-10T07:42:53.995146+00:00"
+        },
+        "BNB": {
+          "success": true,
+          "error": null,
+          "response_time": 6.79271125793457,
+          "data_completeness": 100.0,
+          "has_data": false,
+          "symbol_in_response": "BNB",
+          "timestamp": "2025-12-10T07:43:00.787857+00:00"
+        },
+        "SOL": {
+          "success": true,
+          "error": null,
+          "response_time": 6.85705041885376,
+          "data_completeness": 100.0,
+          "has_data": false,
+          "symbol_in_response": "SOL",
+          "timestamp": "2025-12-10T07:43:07.644908+00:00"
+        },
+        "BTC": {
+          "success": true,
+          "error": null,
+          "response_time": 6.785479545593262,
+          "data_completeness": 100.0,
+          "has_data": false,
+          "symbol_in_response": "BTC",
+          "timestamp": "2025-12-10T07:43:14.431902+00:00"
+        }
+      },
+      "success_rate": 100.0,
+      "avg_completeness": 100.0,
+      "avg_response_time": 6.832104206085205,
+      "total_tested": 4,
+      "successful": 4
+    },
+    "hardcoded_limits": {
+      "handlers/telegram_bot.py": {
+        "array_slicing": [
+          "[:100]"
+        ],
+        "hardcoded_symbols": [
+          "BTC\", \"ETH\"",
+          "[\"BTC\", \"ETH\"]",
+          "\"BTC\", \"ETH\""
+        ],
+        "symbol_whitelist": [
+          "whitelist"
+        ]
+      },
+      "services/raw_data_service.py": {
+        "pagination_100": [
+          "limit=100"
+        ]
+      },
+      "services/coinglass_api.py": {
+        "pagination_100": [
+          "per_page\": 100",
+          "limit\": 100",
+          "limit=100"
+        ],
+        "hardcoded_symbols": [
+          "BTC\", \"ETH\"",
+          "\"BTC\", \"ETH\""
+        ],
+        "symbol_whitelist": [
+          "supported_symbols"
+        ]
+      },
+      "services/market_data_core.py": {
+        "hardcoded_symbols": [
+          "BTC\", \"ETH\"",
+          "\"BTC\", \"ETH\""
+        ],
+        "symbol_whitelist": [
+          "supported_symbols"
+        ]
+      }
+    },
+    "endpoint_analysis": {
+      "supported_coins": {
+        "total_symbols": 0,
+        "response_success": false,
+        "error": null
+      },
+      "coins_markets": {
+        "total_symbols": 0,
+        "response_success": false,
+        "error": null
+      }
+    }
+  },
+  "coinglass_total_symbols": 0,
+  "recommendations": [
+    {
+      "priority": "HIGH",
+      "issue": "Low symbol resolution success rate",
+      "recommendation": "Improve symbol resolution logic to handle more variations"
+    },
+    {
+      "priority": "HIGH",
+      "issue": "Limited symbols in supported_coins endpoint",
+      "recommendation": "Verify API key permissions and endpoint access"
+    },
+    {
+      "priority": "MEDIUM",
+      "issue": "Hardcoded limits detected",
+      "recommendation": "Replace hardcoded limits with dynamic configuration"
+    }
+  ]
+}
